@@ -18,7 +18,6 @@ import (
 )
 
 func (v *view) openSettings() {
-	v.replace.SetChecked(false)
 	v.problem = ""
 	config := v.state.Config
 	domain := entry(config.Domain, "mc.example.com")
@@ -29,10 +28,9 @@ func (v *view) openSettings() {
 		udp.SetText(strconv.Itoa(config.UDPPort))
 	}
 	hours := entry(strconv.Itoa(config.Hours), "4")
-	picker := newZonePicker(config.Zone)
-	zone := picker.selectBox
-	automatic := widget.NewButton(locale.T("Auto-select"), nil)
-	location := container.NewBorder(nil, nil, nil, automatic, zone)
+	picker := newZonePicker(v.window, config.Zone)
+	zone := picker.button
+	location := container.NewStack(zone, container.NewBorder(nil, nil, nil, picker.ping))
 	portsAndDuration := container.NewGridWithColumns(3,
 		settingsField("Local TCP port", tcp),
 		settingsField("UDP port", udp),
@@ -116,13 +114,12 @@ func (v *view) openSettings() {
 	canLoad := func() bool {
 		return v.state.Phase == "idle" && googleReady() && strings.TrimSpace(project.Text) != ""
 	}
-	loadZones := func(automatic bool, after func()) {
+	loadZones := func(after func()) {
 		if closed || !canLoad() || v.busy || v.closing {
 			return
 		}
 		key := locationKey{strings.TrimSpace(project.Text), strings.TrimSpace(googleID.Text)}
-		recommend := automatic || picker.selected() == ""
-		v.loadLocations(key, automatic, func(choices locationChoices) {
+		v.loadLocations(key, func(choices locationChoices) {
 			if closed {
 				return
 			}
@@ -130,12 +127,12 @@ func (v *view) openSettings() {
 			if len(zones) > 0 {
 				latencies := choices.latencies
 				picker.setOptions(zones, latencies)
-				if recommend {
+				if picker.selected() == "" {
 					picker.selectZone(fastestZone(zones, latencies))
 				}
 			}
 			v.problem = ""
-			if choices.err != nil && (len(zones) == 0 || recommend) {
+			if choices.err != nil && (len(zones) == 0 || picker.selected() == "") {
 				v.problem = choices.err.Error()
 			}
 			v.render()
@@ -145,13 +142,12 @@ func (v *view) openSettings() {
 		})
 	}
 
-	automatic.OnTapped = func() { loadZones(true, nil) }
-	project.OnSubmitted = func(string) { loadZones(false, nil) }
+	project.OnSubmitted = func(string) { loadZones(nil) }
 
 	google := widget.NewButtonWithIcon("Google", googleIcon, func() {
 		perform("google", func() {
 			clear(v.locations)
-			loadZones(false, nil)
+			loadZones(nil)
 		})
 	})
 	cloudflare := widget.NewButtonWithIcon("Cloudflare", cloudflareIcon, func() { perform("cloudflare", nil) })
@@ -170,7 +166,7 @@ func (v *view) openSettings() {
 	save := func() { perform("", d.Hide) }
 	ok.OnTapped = func() {
 		if picker.selected() == "" && canLoad() && len(zones) == 0 {
-			loadZones(false, save)
+			loadZones(save)
 			return
 		}
 		save()
@@ -182,16 +178,14 @@ func (v *view) openSettings() {
 			setEnabled(input, editable)
 		}
 		ready := googleReady()
-		placeholder := "Choose a zone"
-		if !ready {
-			placeholder = "Sign in to Google"
-		}
-		if zone.PlaceHolder != locale.T(placeholder) {
-			zone.PlaceHolder = locale.T(placeholder)
-			zone.Refresh()
+		if picker.selected() == "" {
+			placeholder := "Choose a zone"
+			if !ready {
+				placeholder = "Sign in to Google"
+			}
+			zone.SetText(locale.T(placeholder))
 		}
 		setEnabled(zone, editable && ready && len(zones) > 0)
-		setEnabled(automatic, editable && canLoad())
 		v.updateLogin(google, googleID, ready, "Google")
 		cfReady := v.state.CloudflareReady && strings.TrimSpace(cfID.Text) == v.state.Config.CloudflareClientID
 		v.updateLogin(cloudflare, cfID, cfReady, "Cloudflare")
@@ -237,7 +231,7 @@ func (v *view) openSettings() {
 	v.settingsChanged()
 	d.Resize(v.window.Canvas().Size().Subtract(fyne.NewSize(64, 24)))
 	d.Show()
-	loadZones(false, nil)
+	loadZones(nil)
 }
 
 func (v *view) updateLogin(btn *widget.Button, id *widget.Entry, ready bool, provider string) {

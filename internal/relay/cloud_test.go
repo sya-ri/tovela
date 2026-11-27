@@ -156,8 +156,9 @@ func TestExistingDNSRequiresReplacementConsent(t *testing.T) {
 		return reply(200, `{"result":[{"id":"srv","type":"SRV","name":"_minecraft._tcp.mc.example.com"}]}`)
 	})}}
 	const root = "https://example.com/dns_records"
-	if _, err := dns.ensureAvailable(t.Context(), root, identity{Nonce: "local"}, false); err == nil {
-		t.Fatal("accepted replacing an existing DNS record without consent")
+	var conflict *DNSConflict
+	if _, err := dns.ensureAvailable(t.Context(), root, identity{Nonce: "local"}, false); !errors.As(err, &conflict) || conflict.Hostname != config.Domain {
+		t.Fatalf("expected a DNS conflict for %s, got %v", config.Domain, err)
 	}
 	deletes, err := dns.ensureAvailable(t.Context(), root, identity{Nonce: "local"}, true)
 	if err != nil || len(deletes) != 2 || deletes[0]["id"] != "other" || deletes[1]["id"] != "srv" {

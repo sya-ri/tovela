@@ -16,7 +16,7 @@ The tests use Fyne's software renderer to compare snapshots and exercise control
 - A [Google desktop OAuth client](https://developers.google.com/identity/protocols/oauth2/native-app) and a [Cloudflare OAuth client](https://developers.cloudflare.com/fundamentals/oauth/create-an-oauth-client/) let the operator sign in. The Cloudflare client uses authorization code and refresh token grants, public token authentication, Zone Read and DNS Write, and the redirect URI `http://127.0.0.1:42813/callback`. Supply public IDs through the workflow variables `GOOGLE_OAUTH_CLIENT_ID` and `CLOUDFLARE_OAUTH_CLIENT_ID` for distribution, or enter them under **Advanced** in the app.
 - Linux needs a running Secret Service provider for credentials.
 
-**Replace existing DNS records** deletes conflicting records for the selected hostname. Stopping removes the relay's record. Restore any previous records separately.
+Starting a relay asks for confirmation when DNS records conflict with its hostname. Confirming replaces those records. Stopping removes the relay's record. Restore any previous records separately.
 
 Login buttons use provider marks from [Google Identity](https://developers.google.com/identity/branding-guidelines) and [Cloudflare Workers](https://workers.cloudflare.com/logo.svg).
 

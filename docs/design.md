@@ -13,15 +13,15 @@ flowchart LR
     Local <-->|"Local TCP / UDP"| Server["Minecraft / UDP service"]
 ```
 
-The desktop app loads zones that offer the relay machine type in the selected Google Cloud project. When the profile has no saved zone, it selects a zone in the region with the shortest measured connection time from the host computer. **Auto-select** reapplies the recommendation after a manual choice. The app reuses the zone list and recommendation until it closes or the operator signs in to Google again. The zone selector shows the host computer's regional connection time in milliseconds using [regional Google Cloud Storage endpoints](https://docs.cloud.google.com/storage/docs/regional-endpoints). Players may get a better connection from a different zone.
+The desktop app loads zones that offer the relay machine type in the selected Google Cloud project. When the profile has no saved zone, it selects a zone in the region with the shortest measured connection time from the host computer. The app reuses the zone list and recommendation until it closes or the operator signs in to Google again. The zone selector shows the host computer's regional connection time in milliseconds using [regional Google Cloud Storage endpoints](https://docs.cloud.google.com/storage/docs/regional-endpoints). Players may get a better connection from a different zone.
 
 The app finds the Cloudflare zone matching the hostname unless the operator selects one.
 
 ## Relay lifecycle
 
-1. Check that the local server returns a Minecraft Java status response.
-2. Look up a deterministic VM name in the configured zone. Reuse a matching session only when its ownership labels agree. Check that the zone offers `e2-micro` before creating a relay. Use the same `requestId` for creation retries. Look up the VM again on a name conflict. Give each new VM an ephemeral IPv4 address, a deletion deadline, and an auto-deleting boot disk.
-3. Start the frp tunnel and verify the public Minecraft status response. Publish a DNS-only A record with a 60-second TTL. Ask the operator before replacing conflicting A, AAAA, CNAME, or Java SRV records.
+1. Check that the local server returns a Minecraft Java status response and look up the relay by name in the configured zone. Reuse a matching session only when its ownership labels agree.
+2. Ask the operator to confirm replacement if existing A, AAAA, CNAME, or Java SRV records conflict with the relay hostname. Check that the zone offers `e2-micro` before creating a relay. Use the same `requestId` for creation retries. Look up the VM again on a name conflict. Give each new VM an ephemeral IPv4 address, a deletion deadline, and an auto-deleting boot disk.
+3. Start the frp tunnel and verify the public Minecraft status response. Publish a DNS-only A record with a 60-second TTL.
 4. Extend a running relay by four hours by updating its GCE termination time. The app displays the expiry confirmed by GCE.
 5. On stop, remove the session's DNS record and delete its VM. Attempt VM deletion if DNS cleanup fails. After a forced app exit, GCE deletes the VM at expiry, and the next start or stop reconciles stale DNS.
 

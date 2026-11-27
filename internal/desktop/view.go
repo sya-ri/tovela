@@ -58,7 +58,6 @@ type view struct {
 	expiry   *widget.Label
 	details  *fyne.Container
 	error    *widget.Label
-	replace  *widget.Check
 	start    *widget.Button
 	extend   *widget.Button
 	stop     *widget.Button
@@ -106,10 +105,7 @@ func newView(window fyne.Window, service backend, icon fyne.Resource) *view {
 	logo.SetMinSize(fyne.NewSize(36, 36))
 	v.profiles = &widget.Select{PlaceHolder: locale.T("Relay profile")}
 	v.add = widget.NewButtonWithIcon("", theme.ContentAddIcon(), func() {
-		v.run(func(context.Context) error { return service.AddProfile() }, func() {
-			v.replace.SetChecked(false)
-			v.openSettings()
-		})
+		v.run(func(context.Context) error { return service.AddProfile() }, v.openSettings)
 	})
 	v.settings = widget.NewButtonWithIcon("", theme.SettingsIcon(), v.openSettings)
 	header := container.NewBorder(nil, nil, logo, container.NewHBox(v.add, v.settings), v.profiles)
@@ -138,22 +134,19 @@ func newView(window fyne.Window, service backend, icon fyne.Resource) *view {
 	v.error.Importance = widget.DangerImportance
 	v.error.Wrapping = fyne.TextWrapWord
 
-	v.replace = widget.NewCheck(locale.T("Replace existing DNS records"), nil)
 	v.start = widget.NewButtonWithIcon(locale.T("Start"), theme.MediaPlayIcon(), func() {
 		if !v.readyToStart() {
 			v.openSettings()
 			return
 		}
-		replace := v.replace.Checked
-		v.replace.SetChecked(false)
-		v.run(func(ctx context.Context) error { return service.Start(ctx, replace) }, nil)
+		v.startRelay(false)
 	})
 	v.start.Importance = widget.HighImportance
 	v.extend = widget.NewButtonWithIcon(locale.T("Extend 4 h"), theme.HistoryIcon(), func() { v.run(service.Extend, nil) })
 	v.stop = widget.NewButtonWithIcon(locale.T("Stop"), theme.MediaStopIcon(), func() { v.run(service.Stop, nil) })
 	actions := container.NewHBox(layout.NewSpacer(), v.start, v.extend, v.stop)
 	cardContent := container.NewVBox(v.status, address, v.details,
-		widget.NewSeparator(), v.error, v.replace, actions)
+		widget.NewSeparator(), v.error, actions)
 	body := container.NewStack(card, container.New(layout.NewCustomPaddedLayout(16, 20, 20, 20), cardContent))
 	content := container.New(layout.NewCustomPaddedVBoxLayout(16), header, body)
 	window.SetContent(container.New(layout.NewCustomPaddedLayout(18, 18, 16, 16), container.NewVScroll(content)))
@@ -176,7 +169,6 @@ func (v *view) selectProfile(label string) {
 	}
 	id := v.state.Profiles[i].ID
 	v.run(func(context.Context) error { return v.service.SelectProfile(id) }, func() {
-		v.replace.SetChecked(false)
 		v.copied = ""
 		v.render()
 	})
@@ -265,8 +257,6 @@ func (v *view) render() {
 	setEnabled(v.extend, !locked)
 	setVisible(v.stop, phase == "running" || phase == "recoverable")
 	setEnabled(v.stop, !locked)
-	setVisible(v.replace, ready && phase == "idle")
-	setEnabled(v.replace, !locked)
 
 	text := v.problem
 	if text == "" {
@@ -331,11 +321,16 @@ func (v *view) run(action func(context.Context) error, success func()) {
 			if v.closing {
 				return
 			}
-			if err != nil {
+			// A late conflict joined with a cleanup error still needs error reporting.
+			conflict, needsConsent := err.(*relay.DNSConflict)
+			if err != nil && !needsConsent {
 				v.problem = err.Error()
 			}
 			v.state = v.service.GetState()
 			v.render()
+			if needsConsent {
+				v.confirmDNSReplacement(conflict.Hostname)
+			}
 			if errors.Is(err, relay.ErrFrpcBlocked) {
 				v.showProtectionHistory()
 			}
@@ -344,6 +339,26 @@ func (v *view) run(action func(context.Context) error, success func()) {
 			}
 		})
 	}()
+}
+
+func (v *view) startRelay(replaceDNS bool) {
+	v.run(func(ctx context.Context) error {
+		return v.service.Start(ctx, replaceDNS)
+	}, nil)
+}
+
+func (v *view) confirmDNSReplacement(hostname string) {
+	profile := v.state.ActiveProfile
+	message := widget.NewLabel(fmt.Sprintf(locale.T("Replace the existing DNS records for %s to start the relay?"), hostname))
+	message.Wrapping = fyne.TextWrapWord
+	d := dialog.NewCustomConfirm(locale.T("Replace DNS records"), locale.T("Replace and start"), locale.T("Cancel"), message, func(approved bool) {
+		if approved && v.state.ActiveProfile == profile && v.state.Config.Domain == hostname {
+			v.startRelay(true)
+		}
+	}, v.window)
+	d.SetConfirmImportance(widget.DangerImportance)
+	d.Resize(fyne.NewSize(min(460, v.window.Canvas().Size().Width-32), d.MinSize().Height+24))
+	d.Show()
 }
 
 func (v *view) showProtectionHistory() {

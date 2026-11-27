@@ -88,6 +88,7 @@ func TestRelayScreens(t *testing.T) {
 		{name: "settings-ja", locale: "ja-JP", phase: "idle"},
 		{name: "settings-narrow-ja", locale: "ja-JP", phase: "idle", narrow: true},
 		{name: "frpc-blocked-ja", locale: "ja-JP", phase: "idle"},
+		{name: "dns-conflict-ja", locale: "ja-JP", phase: "idle"},
 	} {
 		t.Run(screen.name, func(t *testing.T) {
 			if err := locale.Use(screen.locale); err != nil {
@@ -137,11 +138,15 @@ func TestRelayScreens(t *testing.T) {
 				}
 			case "frpc-blocked", "frpc-blocked-ja":
 				v.showProtectionHistory()
+			case "dns-conflict-ja":
+				v.confirmDNSReplacement(config.Domain)
 			}
 			test.AssertRendersToImage(t, screen.name+".png", window.Canvas())
 			switch screen.name {
 			case "settings":
-				checkAutoSelect(t, v)
+				if zone := locationPicker(t, v).Text; zone != config.Zone {
+					t.Errorf("saved zone reopened as %q, want %q", zone, config.Zone)
+				}
 			case "setup":
 				window.Canvas().Focus(v.start)
 				v.start.TypedKey(&fyne.KeyEvent{Name: fyne.KeySpace})
@@ -168,14 +173,17 @@ func TestInitialLocationUsesOneRequestAndMeasurement(t *testing.T) {
 	test.Tap(v.settings)
 	waitForAction(t, v)
 	zone := locationPicker(t, v)
-	if zone.Selected != "europe-west2-a   28 ms" {
-		t.Fatalf("initial zone = %q, want europe-west2-a", zone.Selected)
+	if zone.Text != "europe-west2-a" {
+		t.Fatalf("initial zone = %q, want europe-west2-a", zone.Text)
 	}
-
-	zone.SetSelected("us-central1-f   114 ms")
-	test.Tap(settingsButton(t, v, "Auto-select"))
-	if zone.Selected != "europe-west2-a   28 ms" {
-		t.Errorf("cached suggestion selected %q, want europe-west2-a", zone.Selected)
+	test.Tap(zone)
+	list := locationList(t, v)
+	for range 5 {
+		list.TypedKey(&fyne.KeyEvent{Name: fyne.KeyDown})
+	}
+	list.TypedKey(&fyne.KeyEvent{Name: fyne.KeySpace})
+	if zone.Text != "us-central1-f" {
+		t.Errorf("manual zone = %q, want us-central1-f", zone.Text)
 	}
 	test.Tap(settingsButton(t, v, "Close"))
 	test.Tap(v.settings)
@@ -204,27 +212,68 @@ func (b *countedLocationBackend) MeasureRelayZones(ctx context.Context, zones []
 	return b.snapshotBackend.MeasureRelayZones(ctx, zones)
 }
 
-func checkAutoSelect(t *testing.T, v *view) {
-	t.Helper()
-	zone := locationPicker(t, v)
-	if zone.Selected != "northamerica-northeast2-a   91 ms" {
-		t.Fatalf("saved zone reopened as %q", zone.Selected)
-	}
-	test.Tap(settingsButton(t, v, "Auto-select"))
-	if zone.Selected != "europe-west2-a   28 ms" {
-		t.Errorf("Auto-select picked %q, want europe-west2-a", zone.Selected)
-	}
-}
-
-func locationPicker(t *testing.T, v *view) *widget.Select {
+func locationPicker(t *testing.T, v *view) *widget.Button {
 	t.Helper()
 	for _, object := range test.LaidOutObjects(v.window.Canvas().Overlays().Top()) {
-		if selectBox, ok := object.(*widget.Select); ok && selectBox.PlaceHolder == "Choose a zone" {
-			return selectBox
+		if button, ok := object.(*widget.Button); ok && button.IconPlacement == widget.ButtonIconTrailingText && !button.Disabled() {
+			return button
 		}
 	}
 	t.Fatal("The relay zone selector is unavailable.")
 	return nil
+}
+
+func locationList(t *testing.T, v *view) *widget.List {
+	t.Helper()
+	for _, object := range test.LaidOutObjects(v.window.Canvas().Overlays().Top()) {
+		if list, ok := object.(*widget.List); ok {
+			return list
+		}
+	}
+	t.Fatal("The relay zone list is unavailable.")
+	return nil
+}
+
+type dnsStartBackend struct {
+	snapshotBackend
+	attempts []bool
+}
+
+func (b *dnsStartBackend) Start(_ context.Context, replace bool) error {
+	b.attempts = append(b.attempts, replace)
+	if !replace {
+		return &relay.DNSConflict{Hostname: b.state.Config.Domain}
+	}
+	return nil
+}
+
+func TestDNSReplacementRequiresConfirmationOnStart(t *testing.T) {
+	a := test.NewTempApp(t)
+	window := a.NewWindow("Tovela")
+	defer window.Close()
+	window.Resize(fyne.NewSize(610, 500))
+
+	config := relay.DefaultConfig("google-client", "cloudflare-client")
+	config.Domain, config.Project, config.Zone = "play.example.com", "example-project", "europe-west2-a"
+	b := &dnsStartBackend{snapshotBackend: snapshotBackend{state: relay.DesktopState{
+		ActiveProfile: "default",
+		State:         relay.State{Config: config, Phase: "idle", GoogleReady: true, CloudflareReady: true},
+	}}}
+	v := newView(window, b, theme.SettingsIcon())
+	test.Tap(v.start)
+	waitForAction(t, v)
+	test.Tap(settingsButton(t, v, "Cancel"))
+	if window.Canvas().Overlays().Top() != nil || len(b.attempts) != 1 || b.attempts[0] {
+		t.Fatalf("cancelled DNS confirmation produced attempts %v", b.attempts)
+	}
+
+	test.Tap(v.start)
+	waitForAction(t, v)
+	test.Tap(settingsButton(t, v, "Replace and start"))
+	waitForAction(t, v)
+	if len(b.attempts) != 3 || b.attempts[1] || !b.attempts[2] {
+		t.Errorf("confirmed DNS replacement produced attempts %v, want [false false true]", b.attempts)
+	}
 }
 
 func settingsButton(t *testing.T, v *view, label string) *widget.Button {
@@ -259,10 +308,10 @@ func TestBlockedClientKeepsCleanupError(t *testing.T) {
 func TestRelayLocationKeepsSavedZone(t *testing.T) {
 	test.NewTempApp(t)
 	saved := "asia-northeast1-b"
-	picker := newZonePicker(saved)
+	picker := newZonePicker(nil, saved)
 	picker.setOptions([]string{saved, "southamerica-east1-b"}, map[string]time.Duration{saved: 103 * time.Millisecond})
-	if picker.selected() != saved || picker.selectBox.Selected != saved+"   103 ms" {
-		t.Errorf("saved location %q reopened as %q", saved, picker.selectBox.Selected)
+	if picker.selected() != saved || picker.ping.Text != "103 ms" {
+		t.Errorf("saved location %q reopened as %q with ping %q", saved, picker.selected(), picker.ping.Text)
 	}
 	picker.setOptions([]string{"europe-west2-a"}, nil)
 	if picker.selected() != "" {

@@ -283,6 +283,15 @@ type dnsRecord struct {
 	Comment string
 }
 
+// DNSConflict reports a hostname with records that require replacement consent.
+type DNSConflict struct {
+	Hostname string
+}
+
+func (e *DNSConflict) Error() string {
+	return fmt.Sprintf(locale.T("Existing DNS records for %s."), e.Hostname)
+}
+
 type cloudflare struct {
 	client *http.Client
 	config Config
@@ -340,7 +349,7 @@ func (c cloudflare) ensureAvailable(ctx context.Context, root string, session id
 				continue
 			}
 			if record.Comment != c.recordOwner(session) && !replace {
-				return nil, fmt.Errorf(locale.T("%s already has a %s record. Select Replace existing DNS records to proceed."), name, record.Type)
+				return nil, &DNSConflict{Hostname: c.config.Domain}
 			}
 			deletes = append(deletes, map[string]string{"id": record.ID})
 		}
