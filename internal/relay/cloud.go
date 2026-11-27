@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -336,7 +337,11 @@ func (c cloudflare) recordOwner(session identity) string {
 
 func (c cloudflare) ensureAvailable(ctx context.Context, root string, session identity, replace bool) ([]map[string]string, error) {
 	var deletes []map[string]string
-	for _, name := range []string{c.config.Domain, "_minecraft._tcp." + c.config.Domain} {
+	names := []string{c.config.Domain}
+	if slices.ContainsFunc(c.config.Ports, func(port PortMapping) bool { return port.Protocol == MinecraftJava }) {
+		names = append(names, "_minecraft._tcp."+c.config.Domain)
+	}
+	for _, name := range names {
 		records, err := c.records(ctx, root, name)
 		if err != nil {
 			return nil, err

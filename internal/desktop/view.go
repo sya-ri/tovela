@@ -5,9 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/url"
+	"reflect"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -25,6 +28,7 @@ type backend interface {
 	GetState() relay.DesktopState
 	SelectProfile(string) error
 	AddProfile() error
+	DeleteProfile(string) error
 	SaveConfig(relay.Config) error
 	LogIn(context.Context, string) error
 	RelayZones(context.Context, string, string) ([]string, error)
@@ -54,6 +58,7 @@ type view struct {
 	status   *widget.Label
 	address  *widget.Label
 	copy     *widget.Button
+	tcp      *widget.Label
 	udp      *widget.Label
 	expiry   *widget.Label
 	details  *fyne.Container
@@ -104,7 +109,7 @@ func newView(window fyne.Window, service backend, icon fyne.Resource) *view {
 	logo.FillMode = canvas.ImageFillContain
 	logo.SetMinSize(fyne.NewSize(36, 36))
 	v.profiles = &widget.Select{PlaceHolder: locale.T("Relay profile")}
-	v.add = widget.NewButtonWithIcon("", theme.ContentAddIcon(), func() {
+	v.add = widget.NewButtonWithIcon(locale.T("Add"), theme.ContentAddIcon(), func() {
 		v.run(func(context.Context) error { return service.AddProfile() }, v.openSettings)
 	})
 	v.settings = widget.NewButtonWithIcon("", theme.SettingsIcon(), v.openSettings)
@@ -115,15 +120,18 @@ func newView(window fyne.Window, service backend, icon fyne.Resource) *view {
 	v.address.SizeName = theme.SizeNameHeadingText
 	v.address.Wrapping = fyne.TextWrapBreak
 	v.copy = widget.NewButtonWithIcon(locale.T("Copy"), theme.ContentCopyIcon(), func() {
-		address := v.state.Config.Domain
+		address := relayAddress(v.state.Config)
 		window.Clipboard().SetContent(address)
 		v.copied = address
 		v.render()
 	})
+	v.tcp = widget.NewLabel("")
 	v.udp = widget.NewLabel("")
+	v.tcp.Wrapping = fyne.TextWrapWord
+	v.udp.Wrapping = fyne.TextWrapWord
 	v.expiry = widget.NewLabel("")
 	metrics := container.NewGridWithColumns(3,
-		metric("TCP", widget.NewLabel("25565")), metric("UDP", v.udp), metric(locale.T("Expires"), v.expiry),
+		metric("TCP", v.tcp), metric("UDP", v.udp), metric(locale.T("Expires"), v.expiry),
 	)
 	v.details = container.NewVBox(widget.NewSeparator(), metrics)
 	address := container.NewBorder(nil, nil, nil, container.NewCenter(v.copy), v.address)
@@ -179,16 +187,27 @@ func (v *view) refresh() {
 		return
 	}
 	state := v.service.GetState()
-	if state.State == v.state.State && state.ActiveProfile == v.state.ActiveProfile && slices.Equal(state.Profiles, v.state.Profiles) {
+	if reflect.DeepEqual(state.State, v.state.State) && state.ActiveProfile == v.state.ActiveProfile && slices.Equal(state.Profiles, v.state.Profiles) {
 		return
 	}
 	v.state = state
 	v.render()
 }
 
+func relayAddress(config relay.Config) string {
+	if config.Domain == "" || len(config.Ports) != 1 {
+		return config.Domain
+	}
+	port := config.Ports[0]
+	if port.Protocol == relay.MinecraftJava && port.PublicPort == relay.DefaultTCPPort {
+		return config.Domain
+	}
+	return net.JoinHostPort(config.Domain, strconv.Itoa(port.PublicPort))
+}
+
 func (v *view) readyToStart() bool {
 	state := v.state
-	return state.Config.Domain != "" && state.Config.Zone != "" && state.GoogleReady && state.CloudflareReady
+	return state.Config.Domain != "" && state.Config.Zone != "" && len(state.Config.Ports) > 0 && state.GoogleReady && state.CloudflareReady
 }
 
 func (v *view) render() {
@@ -214,7 +233,7 @@ func (v *view) render() {
 		v.status.Importance = widget.MediumImportance
 	}
 	v.status.Refresh()
-	address := v.state.Config.Domain
+	address := relayAddress(v.state.Config)
 	hasAddress := address != ""
 	setVisible(v.status, hasAddress || v.closing)
 	setVisible(v.details, hasAddress)
@@ -229,11 +248,17 @@ func (v *view) render() {
 	}
 	v.copy.SetText(locale.T(copyLabel))
 	v.copy.SetIcon(copyIcon)
-	udp := ""
-	if v.state.Config.UDPPort != 0 {
-		udp = strconv.Itoa(v.state.Config.UDPPort)
+	var tcp, udp []string
+	for _, port := range v.state.Config.Ports {
+		value := strconv.Itoa(port.PublicPort)
+		if port.Protocol == relay.UDP {
+			udp = append(udp, value)
+		} else {
+			tcp = append(tcp, value)
+		}
 	}
-	v.udp.SetText(orDash(udp))
+	v.tcp.SetText(orDash(strings.Join(tcp, ", ")))
+	v.udp.SetText(orDash(strings.Join(udp, ", ")))
 	expiry := ""
 	if !v.state.Deadline.IsZero() {
 		expiry = v.state.Deadline.Local().Format(locale.T("Jan 2, 15:04"))

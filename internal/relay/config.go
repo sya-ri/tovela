@@ -16,6 +16,8 @@ import (
 
 const credentialService = "tovela"
 
+const DefaultTCPPort = 25565
+
 var (
 	projectPattern  = regexp.MustCompile("^[a-z][a-z0-9-]{4,28}[a-z0-9]$")
 	zonePattern     = regexp.MustCompile("^(?:[a-z][a-z0-9]*-)+[a-z][a-z0-9]*[0-9]-[a-z]$")
@@ -29,15 +31,17 @@ type Config struct {
 	Network            string
 	Domain             string
 	CloudflareZone     string
-	TCPPort            int
-	UDPPort            int
+	Ports              []PortMapping
 	Hours              int
 	GoogleClientID     string
 	CloudflareClientID string
 }
 
 func DefaultConfig(googleID, cloudflareID string) Config {
-	return Config{Network: "default", TCPPort: 25565, Hours: 4, GoogleClientID: googleID, CloudflareClientID: cloudflareID}
+	return Config{
+		Network: "default", Hours: 4, GoogleClientID: googleID, CloudflareClientID: cloudflareID,
+		Ports: (legacyPorts{}).mappings(),
+	}
 }
 
 func (c *Config) normalize() {
@@ -63,15 +67,18 @@ func (c Config) validate() error {
 		(c.Domain != c.CloudflareZone && !strings.HasSuffix(c.Domain, "."+c.CloudflareZone))) {
 		return errors.New(locale.T("Enter a Cloudflare zone that contains the hostname."))
 	}
-	if c.TCPPort < 1 || c.TCPPort > 65535 || c.UDPPort < 0 || c.UDPPort > 65535 || c.Hours < 1 || c.Hours > 12 {
-		return errors.New(locale.T("Check the port numbers and duration."))
+	if c.Hours < 1 || c.Hours > 12 {
+		return errors.New(locale.T("Enter an auto-delete interval from 1 to 12 hours."))
 	}
-	return nil
+	return validatePortMappings(c.Ports)
 }
 
 func (c Config) validateRelay() error {
 	if c.Zone == "" {
 		return errors.New(locale.T("Choose a relay zone."))
+	}
+	if len(c.Ports) == 0 {
+		return errors.New(locale.T("Add a port mapping before starting the relay."))
 	}
 	return c.validate()
 }
@@ -93,8 +100,18 @@ func loadConfig(path string, defaults Config) (Config, error) {
 	if err != nil {
 		return defaults, err
 	}
-	err = json.Unmarshal(data, &defaults)
-	return defaults, err
+	loaded := struct {
+		Config
+		legacyPorts
+	}{Config: defaults}
+	loaded.Ports = nil
+	if err := json.Unmarshal(data, &loaded); err != nil {
+		return defaults, err
+	}
+	if loaded.Ports == nil {
+		loaded.Ports = loaded.legacyPorts.mappings()
+	}
+	return loaded.Config, nil
 }
 
 func saveConfig(path string, config Config) error {

@@ -1,12 +1,12 @@
 # Design
 
-Tovela runs one relay VM per hostname. Each profile has its own Google Cloud zone, local ports, and session expiry, so profiles can run at the same time. The operator keeps the Minecraft servers and worlds on their own computer.
+Tovela runs one relay VM per hostname. Each profile has its own Google Cloud zone, local ports, and session expiry, so profiles can run at the same time. Add a profile for each local server and hostname. Stop a relay before deleting its profile. The operator keeps the local servers and their data on their own computer.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    Player["Minecraft / UDP client"] -->|"TCP 25565 / configured UDP port"| VM["Relay VM (frps)"]
+    Client["Minecraft / TCP / UDP client"] -->|"Configured TCP and optional UDP"| VM["Relay VM (frps)"]
     VM <-->|"TLS control and work connections"| Local["Operator's computer (Tovela and frpc)"]
     Local -->|"Create, inspect, delete"| GCE["Compute Engine API"]
     Local -->|"Update the A record"| DNS["Cloudflare DNS API"]
@@ -15,13 +15,13 @@ flowchart LR
 
 The desktop app loads zones that offer the relay machine type in the selected Google Cloud project. When the profile has no saved zone, it selects a zone in the region with the shortest measured connection time from the host computer. The app reuses the zone list and recommendation until it closes or the operator signs in to Google again. The zone selector shows the host computer's regional connection time in milliseconds using [regional Google Cloud Storage endpoints](https://docs.cloud.google.com/storage/docs/regional-endpoints). Players may get a better connection from a different zone.
 
-The app finds the Cloudflare zone matching the hostname unless the operator selects one. Enable UDP on a profile to enter its local UDP port.
+The app finds the Cloudflare zone matching the hostname unless the operator selects one. A new profile has one Minecraft Java mapping on TCP 25565. Add TCP and UDP mappings for other services on the same hostname. A blank public port uses the local port number. For example, map a plugin's local HTTP port 8080 to public TCP port 80 to serve `http://web.example.com`. TCP mappings forward the service's bytes and leave TLS to the local service.
 
 ## Relay lifecycle
 
-1. Check that the local server returns a Minecraft Java status response and look up the relay by name in the configured zone. Reuse a matching session only when its ownership labels agree.
-2. Ask the operator to confirm replacement if existing A, AAAA, CNAME, or Java SRV records conflict with the relay hostname. Check that the zone offers `e2-micro` before creating a relay. Use the same `requestId` for creation retries. Look up the VM again on a name conflict. Give each new VM an ephemeral IPv4 address, a deletion deadline, and an auto-deleting boot disk.
-3. Start the frp tunnel and verify the public Minecraft status response. Publish a DNS-only A record with a 60-second TTL.
+1. Probe local TCP mappings using Minecraft Java status or a TCP connection, then look up the relay by name in the configured zone. Reuse a matching session only when its ownership labels agree.
+2. Ask the operator to confirm replacement if existing A, AAAA, or CNAME records conflict with the relay hostname. Minecraft Java mode also checks its Java SRV record. Check that the zone offers `e2-micro` before creating a relay. Use the same `requestId` for creation retries. Look up the VM again on a name conflict. Give each new VM an ephemeral IPv4 address, a deletion deadline, and an auto-deleting boot disk.
+3. Start the frp tunnel, probe the public TCP mappings, and wait for the UDP mappings to register. Publish a DNS-only A record with a 60-second TTL.
 4. Extend a running relay by four hours by updating its GCE termination time. The app displays the expiry confirmed by GCE.
 5. On stop, remove the session's DNS record and delete its VM. Attempt VM deletion if DNS cleanup fails. After a forced app exit, GCE deletes the VM at expiry, and the next start or stop reconciles stale DNS.
 

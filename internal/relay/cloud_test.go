@@ -148,7 +148,8 @@ func testExtension(t *testing.T, config Config, created, before time.Time, nonce
 }
 
 func TestExistingDNSRequiresReplacementConsent(t *testing.T) {
-	config := Config{Domain: "mc.example.com"}
+	config := DefaultConfig("", "")
+	config.Domain = "mc.example.com"
 	dns := cloudflare{config: config, client: &http.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
 		if r.URL.Query().Get("name") == config.Domain {
 			return reply(200, `{"result":[{"id":"other","type":"CNAME","name":"mc.example.com"}]}`)

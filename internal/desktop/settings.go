@@ -3,6 +3,7 @@ package desktop
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -21,13 +22,7 @@ func (v *view) openSettings() {
 	config := v.state.Config
 	domain := entry(config.Domain, "mc.example.com")
 	project := entry(config.Project, "")
-	tcp := entry(strconv.Itoa(config.TCPPort), "25565")
-	udp := entry("", locale.T("UDP port"))
-	udpEnabled := widget.NewCheck("UDP", nil)
-	udpEnabled.SetChecked(config.UDPPort != 0)
-	if udpEnabled.Checked {
-		udp.SetText(strconv.Itoa(config.UDPPort))
-	}
+	ports := newPortEditor(config.Ports)
 	hours := entry(strconv.Itoa(config.Hours), "4")
 	picker := newZonePicker(v.window, config.Zone)
 	zone := picker.button
@@ -39,32 +34,21 @@ func (v *view) openSettings() {
 	googleID := entry(config.GoogleClientID, locale.T("Client ID"))
 	cfID := entry(config.CloudflareClientID, locale.T("Client ID"))
 
-	inputs := []fyne.Disableable{domain, project, tcp, udpEnabled, hours, network, cfZone, googleID, cfID}
+	inputs := []fyne.Disableable{domain, project, hours, network, cfZone, googleID, cfID}
 	readConfig := func() (relay.Config, error) {
-		update := relay.Config{
+		duration, err := strconv.Atoi(strings.TrimSpace(hours.Text))
+		if err != nil {
+			return relay.Config{}, errors.New(locale.T("Enter a valid auto-delete interval."))
+		}
+		mappings, err := ports.mappings()
+		if err != nil {
+			return relay.Config{}, err
+		}
+		return relay.Config{
 			Project: project.Text, Zone: picker.selected(), Network: strings.TrimSpace(network.Text),
-			Domain: domain.Text, CloudflareZone: cfZone.Text,
+			Domain: domain.Text, CloudflareZone: cfZone.Text, Ports: mappings, Hours: duration,
 			GoogleClientID: googleID.Text, CloudflareClientID: cfID.Text,
-		}
-		for _, field := range []struct {
-			entry   *widget.Entry
-			invalid string
-			value   *int
-		}{
-			{tcp, "Enter a valid local TCP port.", &update.TCPPort},
-			{udp, "Enter a valid UDP port.", &update.UDPPort},
-			{hours, "Enter a valid auto-delete interval.", &update.Hours},
-		} {
-			if field.entry == udp && !udpEnabled.Checked {
-				continue
-			}
-			number, err := strconv.Atoi(strings.TrimSpace(field.entry.Text))
-			if err != nil || (field.entry == udp && (number < 1 || number > 65535)) {
-				return relay.Config{}, errors.New(locale.T(field.invalid))
-			}
-			*field.value = number
-		}
-		return update, nil
+		}, nil
 	}
 
 	perform := func(provider string, saved func()) {
@@ -138,10 +122,6 @@ func (v *view) openSettings() {
 	google.Alignment = widget.ButtonAlignLeading
 	cloudflare.Alignment = widget.ButtonAlignLeading
 	cloudflareButton := container.NewThemeOverride(cloudflare, cloudflareButtonTheme{cloudflare.Theme()})
-	ports := container.NewGridWithColumns(2,
-		container.NewVBox(widget.NewLabel("TCP"), tcp),
-		container.NewVBox(udpEnabled, udp),
-	)
 	form := settingsForm(
 		settingRow{label: "Relay"},
 		settingRow{"Hostname", domain},
@@ -149,7 +129,7 @@ func (v *view) openSettings() {
 		settingRow{"Relay location", picker.content},
 		settingRow{"Auto-delete after (h)", hours},
 		settingRow{label: "Network"},
-		settingRow{"Local ports", ports},
+		settingRow{"Ports", ports.content},
 		settingRow{label: "Accounts"},
 		settingRow{"Google", google},
 		settingRow{"Cloudflare", cloudflareButton},
@@ -165,10 +145,29 @@ func (v *view) openSettings() {
 	ok := widget.NewButtonWithIcon(locale.T("Save"), theme.ConfirmIcon(), nil)
 	ok.Importance = widget.HighImportance
 	closeButton := widget.NewButton(locale.T("Close"), nil)
-	actions := container.NewHBox(layout.NewSpacer(), closeButton, ok)
+	deleteProfile := widget.NewButtonWithIcon(locale.T("Delete profile"), theme.DeleteIcon(), nil)
+	deleteProfile.Importance = widget.LowImportance
+	actions := container.NewBorder(nil, nil, deleteProfile, container.NewHBox(closeButton, ok))
 	content := container.NewVScroll(container.NewVBox(form, advanced, message, actions))
 	d := dialog.NewCustomWithoutButtons(locale.T("Settings"), container.NewClip(content), v.window)
 	closeButton.OnTapped = d.Hide
+	profileID := v.state.ActiveProfile
+	deleteProfile.OnTapped = func() {
+		name := config.Domain
+		if name == "" {
+			name = locale.T("New relay")
+		}
+		message := widget.NewLabel(fmt.Sprintf(locale.T("Delete the profile for %s?"), name))
+		message.Wrapping = fyne.TextWrapBreak
+		confirm := dialog.NewCustomConfirm(locale.T("Delete profile"), locale.T("Delete"), locale.T("Cancel"), message, func(approved bool) {
+			if approved {
+				v.run(func(context.Context) error { return v.service.DeleteProfile(profileID) }, d.Hide)
+			}
+		}, v.window)
+		confirm.SetConfirmImportance(widget.DangerImportance)
+		confirm.Resize(fyne.NewSize(min(420, v.window.Canvas().Size().Width-32), confirm.MinSize().Height+24))
+		confirm.Show()
+	}
 	save := func() { perform("", d.Hide) }
 	ok.OnTapped = func() {
 		if picker.selected() == "" && canLoad() && len(zones) == 0 {
@@ -183,8 +182,7 @@ func (v *view) openSettings() {
 		for _, input := range inputs {
 			setEnabled(input, editable)
 		}
-		setVisible(udp, udpEnabled.Checked)
-		setEnabled(udp, editable && udpEnabled.Checked)
+		ports.setEnabled(editable)
 		ready := googleReady()
 		if picker.selected() == "" {
 			placeholder := "Choose a zone"
@@ -198,6 +196,7 @@ func (v *view) openSettings() {
 		cfReady := v.state.CloudflareReady && strings.TrimSpace(cfID.Text) == v.state.Config.CloudflareClientID
 		v.updateLogin(cloudflare, cfID, cfReady)
 		setEnabled(ok, editable)
+		setEnabled(deleteProfile, editable)
 		text := v.problem
 		message.Importance = widget.DangerImportance
 		if v.busy {
@@ -235,7 +234,6 @@ func (v *view) openSettings() {
 		v.settingsChanged()
 	}
 	cfID.OnChanged = func(string) { v.settingsChanged() }
-	udpEnabled.OnChanged = func(bool) { v.settingsChanged() }
 	d.SetOnClosed(func() {
 		closed = true
 		v.settingsChanged = nil
