@@ -53,9 +53,12 @@ Minecraft Java is the default. For other ports, match your server’s TCP and UD
 | BeamMP | TCP and UDP 30814 | [BeamMP Docs](https://docs.beammp.com/server/port-forwarding/) |
 | Factorio | UDP 34197 | [Factorio Wiki](https://wiki.factorio.com/Multiplayer) |
 | Hytale | UDP 5520 | [Hytale Server Manual](https://support.hytale.com/hc/en-us/articles/45326769420827-Hytale-Server-Manual) |
+| OpenTTD (direct IP) | TCP and UDP 3979 | [OpenTTD Manual](https://wiki.openttd.org/en/Manual/FAQ%20multiplayer) |
 | Palworld | UDP 8211 | [Palworld Server Guide](https://docs.palworldgame.com/getting-started/requirements/) |
 | Project Zomboid (Steam) | UDP 16261 and 16262 | [The Indie Stone](https://theindiestone.com/forums/topic/60581-4177-released/) |
 | Rust | UDP 28015 for direct connections | [Facepunch Wiki](https://wiki.facepunch.com/rust/creating-a-server) |
+| Satisfactory | TCP and UDP 7777, TCP 8888 | [Satisfactory Wiki](https://satisfactory.wiki.gg/wiki/Dedicated_servers) |
+| Space Engineers | UDP 27016 | [Space Engineers](https://www.spaceengineersgame.com/dedicated-servers/#router-and-firewall-settings) |
 | Terraria | TCP 7777 | [Terraria Wiki](https://terraria.wiki.gg/wiki/Server#Before_You_Host) |
 | Unturned | UDP 27015 and 27016 | [Unturned Docs](https://docs.smartlydressedgames.com/en/latest/servers/port-forwarding.html) |
 | Valheim (Steam backend) | UDP 2456 and 2457 | [Valheim Server Guide](https://www.valheimgame.com/support/a-guide-to-dedicated-servers/) |
