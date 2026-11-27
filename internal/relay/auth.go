@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sya-ri/tovela/internal/locale"
 	"github.com/zalando/go-keyring"
 	"golang.org/x/oauth2"
 )
@@ -70,7 +71,7 @@ func openBrowser(url string) error {
 func authorize(ctx context.Context, cfg *oauth2.Config, provider, key string) error {
 	listener, err := net.Listen("tcp4", oauthCallback)
 	if err != nil {
-		return fmt.Errorf("open the local sign-in port: %w", err)
+		return fmt.Errorf(locale.T("open the local sign-in port: %w"), err)
 	}
 	defer listener.Close()
 	cfg.RedirectURL = "http://" + oauthCallback + "/callback"
@@ -80,12 +81,12 @@ func authorize(ctx context.Context, cfg *oauth2.Config, provider, key string) er
 	mux.HandleFunc("GET /callback", func(w http.ResponseWriter, r *http.Request) {
 		query := r.URL.Query()
 		if query.Get("state") != state {
-			http.Error(w, "The sign-in request does not match.", http.StatusBadRequest)
+			http.Error(w, locale.T("The sign-in request does not match."), http.StatusBadRequest)
 			return
 		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
-		_, _ = fmt.Fprintln(w, "Sign-in response received. Return to Tovela.")
+		_, _ = fmt.Fprintln(w, locale.T("Sign-in response received. Return to Tovela."))
 		select {
 		case code <- query.Get("code"):
 		default:
@@ -100,19 +101,19 @@ func authorize(ctx context.Context, cfg *oauth2.Config, provider, key string) er
 		options = append(options, oauth2.AccessTypeOffline, oauth2.ApprovalForce)
 	}
 	if err := openBrowser(cfg.AuthCodeURL(state, options...)); err != nil {
-		return fmt.Errorf("open your browser: %w", err)
+		return fmt.Errorf(locale.T("open your browser: %w"), err)
 	}
 	select {
 	case result := <-code:
 		if result == "" {
-			return errors.New("authorization was not completed")
+			return errors.New(locale.T("authorization was not completed"))
 		}
 		token, err := cfg.Exchange(ctx, result, oauth2.VerifierOption(verifier))
 		if err != nil {
-			return errors.New("Could not exchange the code. Check the OAuth client settings.")
+			return errors.New(locale.T("Could not exchange the code. Check the OAuth client settings."))
 		}
 		if token.RefreshToken == "" {
-			return errors.New("No refresh token was returned. Enable refresh tokens in the OAuth client settings.")
+			return errors.New(locale.T("No refresh token was returned. Enable refresh tokens in the OAuth client settings."))
 		}
 		return writeCredential(key, token)
 	case <-ctx.Done():
@@ -140,7 +141,7 @@ func (s *savedTokens) Token() (*oauth2.Token, error) {
 	}
 	token, err := s.cfg.TokenSource(s.ctx, &saved).Token()
 	if err != nil {
-		return nil, errors.New("Sign-in expired. Sign in again in Settings.")
+		return nil, errors.New(locale.T("Sign-in expired. Sign in again in Settings."))
 	}
 	if token.AccessToken != saved.AccessToken || token.RefreshToken != saved.RefreshToken || !token.Expiry.Equal(saved.Expiry) {
 		if err := writeCredential(s.key, token); err != nil {
@@ -157,7 +158,7 @@ func authenticatedClient(ctx context.Context, config Config, provider string) (*
 	}
 	var token oauth2.Token
 	if err := readCredential(key, &token); err != nil {
-		return nil, fmt.Errorf("Sign in to %s in Settings.", provider)
+		return nil, fmt.Errorf(locale.T("Sign in to %s in Settings."), provider)
 	}
 	ctx = context.WithValue(ctx, oauth2.HTTPClient, &http.Client{Timeout: 15 * time.Second})
 	client := oauth2.NewClient(ctx, &savedTokens{ctx: ctx, cfg: cfg, key: key})

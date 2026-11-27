@@ -17,3 +17,5 @@ The tests use the software renderer to compare snapshots without opening a windo
 - Linux needs a running Secret Service provider for credentials.
 
 **Replace existing DNS records** deletes conflicting records for the selected hostname. Stopping removes the relay's record. Restore any previous records separately.
+
+The Japanese interface bundles [M PLUS 1p](https://github.com/google/fonts/tree/d714b17ce2379f06daf6295617f961df605dccb5/ofl/mplus1p). Distributions include its [Open Font License](../internal/desktop/fonts/OFL.txt).

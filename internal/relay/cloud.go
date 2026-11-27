@@ -12,6 +12,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/sya-ri/tovela/internal/locale"
 )
 
 type apiError struct {
@@ -142,7 +144,7 @@ func pause(ctx context.Context, duration time.Duration) error {
 func (c compute) wait(ctx context.Context, op operation) error {
 	for op.Status != "DONE" {
 		if op.Name == "" {
-			return errors.New("GCE did not return an operation ID")
+			return errors.New(locale.T("GCE did not return an operation ID"))
 		}
 		if err := pause(ctx, 2*time.Second); err != nil {
 			return err
@@ -206,15 +208,15 @@ func (c compute) extend(ctx context.Context, session identity) (time.Time, error
 		return time.Time{}, err
 	}
 	if vm == nil || vm.Status != "RUNNING" || !c.owns(vm, session) || vm.ID != session.InstanceID {
-		return time.Time{}, errors.New("The running VM does not match this session.")
+		return time.Time{}, errors.New(locale.T("The running VM does not match this session."))
 	}
 	current := vm.expiry()
 	if current.IsZero() || !time.Now().Before(current) {
-		return time.Time{}, errors.New("The relay has already expired.")
+		return time.Time{}, errors.New(locale.T("The relay has already expired."))
 	}
 	deadline := current.Add(extension).UTC().Truncate(time.Second)
 	if deadline.After(vm.CreationTimestamp.Add(120 * 24 * time.Hour)) {
-		return time.Time{}, errors.New("The extension exceeds the maximum Google Cloud VM runtime.")
+		return time.Time{}, errors.New(locale.T("The extension exceeds the maximum Google Cloud VM runtime."))
 	}
 	payload := map[string]string{
 		"terminationTime": deadline.Format(time.RFC3339), "instanceTerminationAction": "DELETE",
@@ -236,7 +238,7 @@ func (c compute) delete(ctx context.Context, session identity) error {
 		return err
 	}
 	if !c.owns(vm, session) || (session.InstanceID != "" && vm.ID != session.InstanceID) {
-		return errors.New("The VM does not match the session that this app created.")
+		return errors.New(locale.T("The VM does not match the session that this app created."))
 	}
 	var op operation
 	err = request(ctx, c.client, http.MethodDelete, c.endpoint()+"/instances/"+c.config.name()+"?requestId="+requestID(), nil, &op)
@@ -286,14 +288,14 @@ func (c cloudflare) zone(ctx context.Context) (string, error) {
 			return response.Result[0].ID, nil
 		case 0:
 			if explicit != "" {
-				return "", fmt.Errorf("Cloudflare zone %s was not found", zone)
+				return "", fmt.Errorf(locale.T("Cloudflare zone %s was not found"), zone)
 			}
 		default:
-			return "", fmt.Errorf("Cloudflare zone %s is ambiguous", zone)
+			return "", fmt.Errorf(locale.T("Cloudflare zone %s is ambiguous"), zone)
 		}
 		_, zone, _ = strings.Cut(zone, ".")
 	}
-	return "", fmt.Errorf("No Cloudflare zone found for %s", c.config.Domain)
+	return "", fmt.Errorf(locale.T("No Cloudflare zone found for %s"), c.config.Domain)
 }
 
 func (c cloudflare) records(ctx context.Context, root, name string) ([]dnsRecord, error) {
@@ -321,7 +323,7 @@ func (c cloudflare) ensureAvailable(ctx context.Context, root string, session id
 				continue
 			}
 			if record.Comment != c.recordOwner(session) && !replace {
-				return nil, fmt.Errorf("%s already has a %s record. Select Replace existing DNS records to proceed.", name, record.Type)
+				return nil, fmt.Errorf(locale.T("%s already has a %s record. Select Replace existing DNS records to proceed."), name, record.Type)
 			}
 			deletes = append(deletes, map[string]string{"id": record.ID})
 		}
@@ -345,7 +347,7 @@ func (c cloudflare) publish(ctx context.Context, zoneID string, session identity
 		return err
 	}
 	if !result.Success {
-		return errors.New("Cloudflare did not confirm the DNS update")
+		return errors.New(locale.T("Cloudflare did not confirm the DNS update"))
 	}
 	return nil
 }

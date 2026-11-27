@@ -10,8 +10,10 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/lang"
 	"github.com/gofrs/flock"
 	"github.com/sya-ri/tovela/internal/desktop"
+	"github.com/sya-ri/tovela/internal/locale"
 	"github.com/sya-ri/tovela/internal/relay"
 )
 
@@ -22,6 +24,9 @@ var googleOAuthClientID, cloudflareOAuthClientID string
 
 func main() {
 	a := app.NewWithID("dev.sya-ri.tovela")
+	if err := locale.Use(lang.SystemLocale().LanguageString()); err != nil {
+		log.Print(err)
+	}
 	a.SetIcon(fyne.NewStaticResource("icon.svg", icon))
 	window := a.NewWindow("Tovela")
 	window.Resize(fyne.NewSize(610, 500))
@@ -67,7 +72,7 @@ func lockInstance() (*flock.Flock, error) {
 		return nil, err
 	}
 	if !ok {
-		return nil, errors.New("Tovela is already open.")
+		return nil, errors.New(locale.T("Tovela is already open."))
 	}
 	return lock, nil
 }

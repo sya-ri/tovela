@@ -2,8 +2,10 @@ package desktop
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
+	"net/url"
 	"slices"
 	"strconv"
 	"time"
@@ -15,6 +17,7 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+	"github.com/sya-ri/tovela/internal/locale"
 	"github.com/sya-ri/tovela/internal/relay"
 )
 
@@ -96,7 +99,7 @@ func newView(window fyne.Window, service backend, icon fyne.Resource) *view {
 	logo := canvas.NewImageFromResource(icon)
 	logo.FillMode = canvas.ImageFillContain
 	logo.SetMinSize(fyne.NewSize(36, 36))
-	v.profiles = &widget.Select{PlaceHolder: "Relay profile"}
+	v.profiles = &widget.Select{PlaceHolder: locale.T("Relay profile")}
 	v.add = widget.NewButtonWithIcon("", theme.ContentAddIcon(), func() {
 		v.run(func(context.Context) error { return service.AddProfile() }, func() {
 			v.replace.SetChecked(false)
@@ -117,7 +120,7 @@ func newView(window fyne.Window, service backend, icon fyne.Resource) *view {
 	v.udp = widget.NewLabel("")
 	v.expiry = widget.NewLabel("")
 	metrics := container.NewGridWithColumns(3,
-		metric("TCP", widget.NewLabel("25565")), metric("UDP", v.udp), metric("Expires", v.expiry),
+		metric("TCP", widget.NewLabel("25565")), metric("UDP", v.udp), metric(locale.T("Expires"), v.expiry),
 	)
 	address := container.NewBorder(nil, nil, nil, container.NewCenter(v.copy), v.address)
 	card := canvas.NewRectangle(theme.Color(theme.ColorNameInputBackground))
@@ -129,15 +132,15 @@ func newView(window fyne.Window, service backend, icon fyne.Resource) *view {
 	v.error.Importance = widget.DangerImportance
 	v.error.Wrapping = fyne.TextWrapWord
 
-	v.replace = widget.NewCheck("Replace existing DNS records", nil)
-	v.start = widget.NewButtonWithIcon("Start", theme.MediaPlayIcon(), func() {
+	v.replace = widget.NewCheck(locale.T("Replace existing DNS records"), nil)
+	v.start = widget.NewButtonWithIcon(locale.T("Start"), theme.MediaPlayIcon(), func() {
 		replace := v.replace.Checked
 		v.replace.SetChecked(false)
 		v.run(func(ctx context.Context) error { return service.Start(ctx, replace) }, nil)
 	})
 	v.start.Importance = widget.HighImportance
-	v.extend = widget.NewButtonWithIcon("Extend 4 h", theme.HistoryIcon(), func() { v.run(service.Extend, nil) })
-	v.stop = widget.NewButtonWithIcon("Stop", theme.MediaStopIcon(), func() { v.run(service.Stop, nil) })
+	v.extend = widget.NewButtonWithIcon(locale.T("Extend 4 h"), theme.HistoryIcon(), func() { v.run(service.Extend, nil) })
+	v.stop = widget.NewButtonWithIcon(locale.T("Stop"), theme.MediaStopIcon(), func() { v.run(service.Stop, nil) })
 	actions := container.NewHBox(layout.NewSpacer(), v.start, v.extend, v.stop)
 	content := container.New(layout.NewCustomPaddedVBoxLayout(14), header, body, v.error, v.replace, actions)
 	window.SetContent(container.New(layout.NewCustomPaddedLayout(18, 18, 16, 16), container.NewVScroll(content)))
@@ -186,9 +189,9 @@ func (v *view) render() {
 	setEnabled(v.add, !v.busy && !v.closing)
 	setEnabled(v.settings, !locked)
 
-	status := phaseLabels[phase]
+	status := locale.T(phaseLabels[phase])
 	if v.closing {
-		status = "Closing…"
+		status = locale.T("Closing…")
 	}
 	v.status.SetText(status)
 	switch phase {
@@ -209,13 +212,13 @@ func (v *view) render() {
 	v.udp.SetText(orDash(udp))
 	expiry := ""
 	if !v.state.Deadline.IsZero() {
-		expiry = v.state.Deadline.Local().Format("Jan 2, 15:04")
+		expiry = v.state.Deadline.Local().Format(locale.T("Jan 2, 15:04"))
 	}
 	v.expiry.SetText(orDash(expiry))
 
-	startLabel := "Start"
+	startLabel := locale.T("Start")
 	if phase == "recoverable" {
-		startLabel = "Reconnect"
+		startLabel = locale.T("Reconnect")
 	}
 	v.start.SetText(startLabel)
 	setVisible(v.start, phase != "running")
@@ -246,13 +249,13 @@ func (v *view) renderProfiles() {
 		label := profile.Domain
 		if label == "" {
 			newRelays++
-			label = "New relay"
+			label = locale.T("New relay")
 			if newRelays > 1 {
-				label = fmt.Sprintf("New relay (%d)", newRelays)
+				label = fmt.Sprintf(locale.T("New relay (%d)"), newRelays)
 			}
 		}
 		if profile.Phase != "idle" {
-			label += " (" + phaseLabels[profile.Phase] + ")"
+			label = fmt.Sprintf(locale.T("%s (%s)"), label, locale.T(phaseLabels[profile.Phase]))
 		}
 		labels = append(labels, label)
 		if profile.ID == v.state.ActiveProfile {
@@ -289,16 +292,36 @@ func (v *view) run(action func(context.Context) error, success func()) {
 			if v.closing {
 				return
 			}
-			if err != nil {
+			blocked := errors.Is(err, relay.ErrFrpcBlocked)
+			if blocked {
+				v.problem = locale.T("Windows blocked frpc")
+			} else if err != nil {
 				v.problem = err.Error()
 			}
 			v.state = v.service.GetState()
 			v.render()
+			if blocked {
+				v.showProtectionHistory()
+			}
 			if err == nil && success != nil {
 				success()
 			}
 		})
 	}()
+}
+
+func (v *view) showProtectionHistory() {
+	message := widget.NewLabel(locale.T("Review the frpc.exe detection in Windows Security."))
+	d := dialog.NewCustomWithoutButtons(locale.T("Windows blocked frpc"), message, v.window)
+	open := widget.NewButtonWithIcon(locale.T("Open Protection History"), theme.NavigateNextIcon(), func() {
+		d.Hide()
+		if err := fyne.CurrentApp().OpenURL(&url.URL{Scheme: "windowsdefender", Host: "history"}); err != nil {
+			dialog.ShowError(err, v.window)
+		}
+	})
+	open.Importance = widget.HighImportance
+	d.SetButtons([]fyne.CanvasObject{widget.NewButton(locale.T("Close"), d.Hide), open})
+	d.Show()
 }
 
 func (v *view) close(app fyne.App) {

@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sya-ri/tovela/internal/locale"
 	"github.com/zalando/go-keyring"
 	"golang.org/x/oauth2"
 )
@@ -84,12 +85,12 @@ func (s *Service) refreshLogins() {
 
 func (s *Service) SaveConfig(config Config) error {
 	if !s.operation.TryLock() {
-		return errors.New("An operation is already in progress.")
+		return errors.New(locale.T("An operation is already in progress."))
 	}
 	defer s.operation.Unlock()
 	state := s.GetState()
 	if state.Phase == "running" || state.Phase == "recoverable" {
-		return errors.New("Stop the relay before editing settings.")
+		return errors.New(locale.T("Stop the relay before editing settings."))
 	}
 	config.normalize()
 	if err := config.validate(); err != nil {
@@ -107,7 +108,7 @@ func (s *Service) SaveConfig(config Config) error {
 
 func (s *Service) LogIn(ctx context.Context, provider string) error {
 	if !s.operation.TryLock() {
-		return errors.New("An operation is already in progress.")
+		return errors.New(locale.T("An operation is already in progress."))
 	}
 	defer s.operation.Unlock()
 	config := s.GetState().Config
@@ -126,7 +127,7 @@ func (s *Service) LogIn(ctx context.Context, provider string) error {
 
 func (s *Service) Start(ctx context.Context, replaceDNS bool) (err error) {
 	if !s.operation.TryLock() {
-		return errors.New("An operation is already in progress.")
+		return errors.New(locale.T("An operation is already in progress."))
 	}
 	defer s.operation.Unlock()
 	state := s.GetState()
@@ -165,7 +166,7 @@ func (s *Service) Start(ctx context.Context, replaceDNS bool) (err error) {
 			if cleanupErr == nil {
 				pending = false
 			} else {
-				err = errors.Join(err, fmt.Errorf("cleanup: %w", cleanupErr))
+				err = errors.Join(err, fmt.Errorf(locale.T("cleanup: %w"), cleanupErr))
 			}
 		}
 		if pending {
@@ -178,10 +179,10 @@ func (s *Service) Start(ctx context.Context, replaceDNS bool) (err error) {
 	if stored := readCredential(key, &session); stored == nil {
 		pending = true
 	} else if !errors.Is(stored, keyring.ErrNotFound) {
-		return fmt.Errorf("open the operating system credential store: %w", stored)
+		return fmt.Errorf(locale.T("open the operating system credential store: %w"), stored)
 	}
 	if err := pingMinecraft(ctx, net.JoinHostPort("127.0.0.1", strconv.Itoa(config.TCPPort)), "localhost", config.TCPPort); err != nil {
-		return fmt.Errorf("Check your local Minecraft Java server on port %d: %w", config.TCPPort, err)
+		return fmt.Errorf(locale.T("Check your local Minecraft Java server on port %d: %w"), config.TCPPort, err)
 	}
 	frpcPath, err = prepareFrpc(ctx)
 	if err != nil {
@@ -210,7 +211,7 @@ func (s *Service) Start(ctx context.Context, replaceDNS bool) (err error) {
 		return err
 	}
 	if vm != nil && !gce.owns(vm, session) {
-		return errors.New("A relay with this name already exists. Check it on the computer that started it.")
+		return errors.New(locale.T("A relay with this name already exists. Check it on the computer that started it."))
 	}
 	if vm == nil && pending && (session.InstanceID != "" || time.Until(session.Deadline) < time.Minute) {
 		if err := dns.unpublish(ctx, zoneID, session); err != nil {
@@ -223,7 +224,7 @@ func (s *Service) Start(ctx context.Context, replaceDNS bool) (err error) {
 		pending = false
 	}
 	if pending && (session.TCPPort != config.TCPPort || session.UDPPort != config.UDPPort) {
-		return errors.New("The existing relay uses different ports. Stop it first.")
+		return errors.New(locale.T("The existing relay uses different ports. Stop it first."))
 	}
 	if _, err := dns.ensureAvailable(ctx, cfEndpoint+"/zones/"+zoneID+"/dns_records", session, replaceDNS); err != nil {
 		return err
@@ -243,7 +244,7 @@ func (s *Service) Start(ctx context.Context, replaceDNS bool) (err error) {
 		err := gce.create(ctx, session)
 		if err != nil && !isHTTP(err, 409) {
 			// The server may have accepted the request. Retain the session for recovery.
-			return fmt.Errorf("Could not confirm relay creation: %w", err)
+			return fmt.Errorf(locale.T("Could not confirm relay creation: %w"), err)
 		}
 		created = err == nil
 	}
@@ -252,7 +253,7 @@ func (s *Service) Start(ctx context.Context, replaceDNS bool) (err error) {
 		return err
 	}
 	if session.InstanceID != "" && vm.ID != session.InstanceID {
-		return errors.New("The VM ID does not match the saved session.")
+		return errors.New(locale.T("The VM ID does not match the saved session."))
 	}
 	session.InstanceID, session.PublicIP = vm.ID, vm.ip()
 	session.DNSZoneID = zoneID
@@ -270,7 +271,7 @@ func (s *Service) Start(ctx context.Context, replaceDNS bool) (err error) {
 		return err
 	}
 	if err := dns.publish(ctx, zoneID, session, session.PublicIP, replaceDNS); err != nil {
-		return fmt.Errorf("Update Cloudflare DNS: %w", err)
+		return fmt.Errorf(locale.T("Update Cloudflare DNS: %w"), err)
 	}
 
 	s.process = started
@@ -287,13 +288,13 @@ func waitInstance(ctx context.Context, gce compute, session identity) (*instance
 		}
 		if vm != nil {
 			if !gce.owns(vm, session) {
-				return nil, errors.New("Another session created the relay with this name.")
+				return nil, errors.New(locale.T("Another session created the relay with this name."))
 			}
 			if vm.Status == "RUNNING" && vm.ip() != "" {
 				return vm, nil
 			}
 			if vm.Status == "TERMINATED" || vm.Status == "SUSPENDED" {
-				return nil, errors.New("The existing VM is stopped. Delete it before reconnecting.")
+				return nil, errors.New(locale.T("The existing VM is stopped. Delete it before reconnecting."))
 			}
 		}
 		if err := pause(ctx, 2*time.Second); err != nil {
@@ -335,12 +336,12 @@ const extension = 4 * time.Hour
 
 func (s *Service) Extend(ctx context.Context) error {
 	if !s.operation.TryLock() {
-		return errors.New("An operation is already in progress.")
+		return errors.New(locale.T("An operation is already in progress."))
 	}
 	defer s.operation.Unlock()
 	state := s.GetState()
 	if state.Phase != "running" {
-		return errors.New("Start the relay before extending it.")
+		return errors.New(locale.T("Start the relay before extending it."))
 	}
 	config := state.Config
 	var session identity
@@ -364,7 +365,7 @@ func (s *Service) Extend(ctx context.Context) error {
 
 func (s *Service) Stop(ctx context.Context) error {
 	if !s.operation.TryLock() {
-		return errors.New("An operation is already in progress.")
+		return errors.New(locale.T("An operation is already in progress."))
 	}
 	defer s.operation.Unlock()
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
