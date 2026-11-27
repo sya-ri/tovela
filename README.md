@@ -40,6 +40,9 @@ The chart uses one Localtonet tunnel (one public port). Tovela estimates use Iow
 
 The three shared-core types can briefly burst to two vCPUs. [E2 machine types](https://docs.cloud.google.com/compute/docs/general-purpose-machines#sharedcore)
 
+> [!NOTE]
+> For most setups, we recommend Localtonet. Tovela is a good fit if you want your own relay or need to publish several ports at once.
+
 ## Default game server ports
 
 Minecraft Java is the default. For other ports, match your server’s TCP and UDP settings.
