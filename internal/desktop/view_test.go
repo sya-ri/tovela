@@ -86,6 +86,7 @@ func TestRelayScreens(t *testing.T) {
 		{name: "settings-options", phase: "idle"},
 		{name: "frpc-blocked", phase: "idle"},
 		{name: "settings-ja", locale: "ja-JP", phase: "idle"},
+		{name: "settings-udp-off", phase: "idle"},
 		{name: "settings-narrow-ja", locale: "ja-JP", phase: "idle", narrow: true},
 		{name: "frpc-blocked-ja", locale: "ja-JP", phase: "idle"},
 		{name: "dns-conflict-ja", locale: "ja-JP", phase: "idle"},
@@ -110,7 +111,9 @@ func TestRelayScreens(t *testing.T) {
 			window.Resize(size)
 			config := relay.DefaultConfig("google-client", "cloudflare-client")
 			config.Domain, config.Project, config.Zone = "play.example.com", "example-project", "northamerica-northeast2-a"
-			config.UDPPort = 24454
+			if screen.name != "settings-udp-off" {
+				config.UDPPort = 24454
+			}
 
 			state := relay.DesktopState{
 				ActiveProfile: "default",
@@ -130,7 +133,7 @@ func TestRelayScreens(t *testing.T) {
 			}
 			v := newView(window, snapshotBackend{state: state}, fyne.NewStaticResource("icon.svg", icon))
 			switch screen.name {
-			case "settings", "settings-options", "settings-ja", "settings-narrow-ja":
+			case "settings", "settings-options", "settings-ja", "settings-narrow-ja", "settings-udp-off":
 				test.Tap(v.settings)
 				waitForAction(t, v)
 				if screen.name == "settings-options" {
@@ -285,6 +288,84 @@ func settingsButton(t *testing.T, v *view, label string) *widget.Button {
 	}
 	t.Fatalf("The %q button is unavailable.", label)
 	return nil
+}
+
+type settingsSaveBackend struct {
+	snapshotBackend
+	saves int
+}
+
+func (b *settingsSaveBackend) SaveConfig(config relay.Config) error {
+	b.saves++
+	b.state.Config = config
+	return nil
+}
+
+func TestUDPToggleControlsPortSaving(t *testing.T) {
+	a := test.NewTempApp(t)
+	window := a.NewWindow("Tovela")
+	defer window.Close()
+	window.Resize(fyne.NewSize(610, 500))
+
+	config := relay.DefaultConfig("", "")
+	config.Domain, config.Project, config.Zone = "play.example.com", "example-project", "europe-west2-a"
+	config.UDPPort = 24454
+	b := &settingsSaveBackend{snapshotBackend: snapshotBackend{state: relay.DesktopState{
+		State: relay.State{Config: config, Phase: "idle"},
+	}}}
+	v := newView(window, b, theme.SettingsIcon())
+	test.Tap(v.settings)
+
+	toggle, port := udpControls(t, v)
+	if !toggle.Checked || port.Text != "24454" {
+		t.Fatalf("saved UDP settings reopened as enabled=%t, port=%q", toggle.Checked, port.Text)
+	}
+	test.Tap(toggle)
+	if port.Visible() || !port.Disabled() {
+		t.Error("disabled UDP port remains available")
+	}
+	test.Tap(settingsButton(t, v, "Save"))
+	waitForAction(t, v)
+	if b.state.Config.UDPPort != 0 {
+		t.Errorf("disabled UDP saved port %d, want 0", b.state.Config.UDPPort)
+	}
+
+	test.Tap(v.settings)
+	toggle, port = udpControls(t, v)
+	test.Tap(toggle)
+	port.SetText("0")
+	test.Tap(settingsButton(t, v, "Save"))
+	if b.saves != 1 || v.problem == "" {
+		t.Fatal("enabled UDP accepted an invalid port")
+	}
+	port.SetText("19132")
+	test.Tap(settingsButton(t, v, "Save"))
+	waitForAction(t, v)
+	if b.state.Config.UDPPort != 19132 {
+		t.Errorf("enabled UDP saved port %d, want 19132", b.state.Config.UDPPort)
+	}
+}
+
+func udpControls(t *testing.T, v *view) (*widget.Check, *widget.Entry) {
+	t.Helper()
+	var toggle *widget.Check
+	var port *widget.Entry
+	for _, object := range test.LaidOutObjects(v.window.Canvas().Overlays().Top()) {
+		switch control := object.(type) {
+		case *widget.Check:
+			if control.Text == "Enable UDP" {
+				toggle = control
+			}
+		case *widget.Entry:
+			if control.PlaceHolder == "UDP port" {
+				port = control
+			}
+		}
+	}
+	if toggle == nil || port == nil {
+		t.Fatal("The UDP toggle or port field is unavailable.")
+	}
+	return toggle, port
 }
 
 func TestBlockedClientKeepsCleanupError(t *testing.T) {

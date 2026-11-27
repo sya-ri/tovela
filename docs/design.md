@@ -15,7 +15,7 @@ flowchart LR
 
 The desktop app loads zones that offer the relay machine type in the selected Google Cloud project. When the profile has no saved zone, it selects a zone in the region with the shortest measured connection time from the host computer. The app reuses the zone list and recommendation until it closes or the operator signs in to Google again. The zone selector shows the host computer's regional connection time in milliseconds using [regional Google Cloud Storage endpoints](https://docs.cloud.google.com/storage/docs/regional-endpoints). Players may get a better connection from a different zone.
 
-The app finds the Cloudflare zone matching the hostname unless the operator selects one.
+The app finds the Cloudflare zone matching the hostname unless the operator selects one. Enable UDP on a profile to enter its local UDP port.
 
 ## Relay lifecycle
 

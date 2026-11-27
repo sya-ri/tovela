@@ -23,8 +23,10 @@ func (v *view) openSettings() {
 	domain := entry(config.Domain, "mc.example.com")
 	project := entry(config.Project, locale.T("Project ID"))
 	tcp := entry(strconv.Itoa(config.TCPPort), "25565")
-	udp := entry("", locale.T("Optional"))
-	if config.UDPPort != 0 {
+	udp := entry("", locale.T("UDP port"))
+	udpEnabled := widget.NewCheck(locale.T("Enable UDP"), nil)
+	udpEnabled.SetChecked(config.UDPPort != 0)
+	if udpEnabled.Checked {
 		udp.SetText(strconv.Itoa(config.UDPPort))
 	}
 	hours := entry(strconv.Itoa(config.Hours), "4")
@@ -33,7 +35,7 @@ func (v *view) openSettings() {
 	location := container.NewStack(zone, container.NewBorder(nil, nil, nil, picker.ping))
 	portsAndDuration := container.NewGridWithColumns(3,
 		settingsField("Local TCP port", tcp),
-		settingsField("UDP port", udp),
+		container.New(layout.NewCustomPaddedVBoxLayout(4), udpEnabled, udp),
 		settingsField("Duration (h)", hours),
 	)
 	var zones []string
@@ -54,7 +56,7 @@ func (v *view) openSettings() {
 		settingsField("Google OAuth client ID", googleID),
 		settingsField("Cloudflare OAuth client ID", cfID),
 	)))
-	inputs := []fyne.Disableable{domain, project, tcp, udp, hours, network, cfZone, googleID, cfID}
+	inputs := []fyne.Disableable{domain, project, tcp, udpEnabled, hours, network, cfZone, googleID, cfID}
 	readConfig := func() (relay.Config, error) {
 		update := relay.Config{
 			Project: project.Text, Zone: picker.selected(), Network: strings.TrimSpace(network.Text),
@@ -70,12 +72,11 @@ func (v *view) openSettings() {
 			{udp, "Enter a valid UDP port.", &update.UDPPort},
 			{hours, "Enter a valid duration.", &update.Hours},
 		} {
-			text := strings.TrimSpace(field.entry.Text)
-			if field.entry == udp && text == "" {
+			if field.entry == udp && !udpEnabled.Checked {
 				continue
 			}
-			number, err := strconv.Atoi(text)
-			if err != nil {
+			number, err := strconv.Atoi(strings.TrimSpace(field.entry.Text))
+			if err != nil || (field.entry == udp && (number < 1 || number > 65535)) {
 				return relay.Config{}, errors.New(locale.T(field.invalid))
 			}
 			*field.value = number
@@ -177,6 +178,8 @@ func (v *view) openSettings() {
 		for _, input := range inputs {
 			setEnabled(input, editable)
 		}
+		setVisible(udp, udpEnabled.Checked)
+		setEnabled(udp, editable && udpEnabled.Checked)
 		ready := googleReady()
 		if picker.selected() == "" {
 			placeholder := "Choose a zone"
@@ -223,6 +226,7 @@ func (v *view) openSettings() {
 		v.settingsChanged()
 	}
 	cfID.OnChanged = func(string) { v.settingsChanged() }
+	udpEnabled.OnChanged = func(bool) { v.settingsChanged() }
 	d.SetOnClosed(func() {
 		closed = true
 		v.settingsChanged = nil
