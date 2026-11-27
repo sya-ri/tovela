@@ -9,10 +9,10 @@ import (
 //go:embed icons/google.png
 var googleIconPNG []byte
 
-//go:embed icons/cloudflare.png
-var cloudflareIconPNG []byte
+//go:embed icons/cloudflare.svg
+var cloudflareIconSVG []byte
 
 var (
 	googleIcon     = fyne.NewStaticResource("google.png", googleIconPNG)
-	cloudflareIcon = fyne.NewStaticResource("cloudflare.png", cloudflareIconPNG)
+	cloudflareIcon = fyne.NewStaticResource("cloudflare.svg", cloudflareIconSVG)
 )
