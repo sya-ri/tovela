@@ -5,7 +5,7 @@ import {
   IconNetwork, IconPlayerPlay, IconPlayerStop, IconPlus, IconSettings, IconWorld, IconX,
 } from '@tabler/icons-react';
 import { relay, type Phase, type RelayState, type Settings } from './runtime';
-import mark from '../../docs/brand/tovela-mark.svg?inline';
+import mark from '../../docs/brand/icon.svg?inline';
 import './style.css';
 
 const phases: Record<Phase, string> = {
