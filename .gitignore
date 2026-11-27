@@ -1,0 +1,4 @@
+/build/
+/internal/desktop/testdata/failed/
+/internal/relay/bin/*
+!/internal/relay/bin/.gitkeep
