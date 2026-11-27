@@ -1,21 +1,21 @@
 # Design
 
-Tovela runs one relay VM per hostname. Each profile has its own Google Cloud zone, local ports, and session expiry, so profiles can run at the same time. Add a profile for each local server and hostname. Stop a relay before deleting its profile. The operator keeps the local servers and their data on their own computer.
+Tovela runs one relay VM per active hostname. Create a profile for each hostname you want to share. Each profile has its own Google Cloud zone, port mappings, and expiry, so several relays can run at once. Stop a relay before deleting its profile. Servers and game data stay on the host computer.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    Client["Minecraft / TCP / UDP client"] -->|"Configured TCP and optional UDP"| VM["Relay VM (frps)"]
+    Client["Remote client"] -->|"TCP or UDP"| VM["Relay VM (frps)"]
     VM <-->|"TLS control and work connections"| Local["Operator's computer (Tovela and frpc)"]
     Local -->|"Create, inspect, delete"| GCE["Compute Engine API"]
     Local -->|"Update the A record"| DNS["Cloudflare DNS API"]
-    Local <-->|"Local TCP / UDP"| Server["Minecraft / UDP service"]
+    Local <-->|"Local TCP / UDP"| Server["Local game server or service"]
 ```
 
 The desktop app loads zones that offer the relay machine type in the selected Google Cloud project. When the profile has no saved zone, it selects a zone in the region with the shortest measured connection time from the host computer. The app reuses the zone list and recommendation until it closes or the operator signs in to Google again. The zone selector shows the host computer's regional connection time in milliseconds using [regional Google Cloud Storage endpoints](https://docs.cloud.google.com/storage/docs/regional-endpoints). Players may get a better connection from a different zone.
 
-The app finds the Cloudflare zone matching the hostname unless the operator selects one. A new profile has one Minecraft Java mapping on TCP 25565. Add TCP and UDP mappings for other services on the same hostname. A blank public port uses the local port number. For example, map a plugin's local HTTP port 8080 to public TCP port 80 to serve `http://web.example.com`. TCP mappings forward the service's bytes and leave TLS to the local service.
+The app finds the Cloudflare zone matching the hostname unless the operator selects one. A new profile has one Minecraft Java mapping on TCP 25565. For other games or services, configure their TCP and UDP ports on the same profile. A blank public port uses the local port number. For example, map a plugin's local HTTP port 8080 to public TCP port 80 to serve `http://web.example.com`. TCP mappings forward the service's bytes and leave TLS to the local service.
 
 ## Relay lifecycle
 
