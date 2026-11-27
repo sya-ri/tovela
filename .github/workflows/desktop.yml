@@ -15,49 +15,62 @@ jobs:
       matrix:
         include:
           - platform: windows
-            runner: windows-latest
+            runner: windows-2025
           - platform: macos
-            runner: macos-15
+            runner: macos-26
           - platform: linux
-            runner: ubuntu-24.04
+            runner: ubuntu-26.04
     runs-on: ${{ matrix.runner }}
+    env:
+      CGO_ENABLED: '1'
     steps:
-      - uses: actions/checkout@v6.1.0
-      - uses: actions/setup-go@v6.5.0
+      - uses: actions/checkout@v7.0.1
+      - uses: jdx/mise-action@v5.3.0
         with:
-          go-version-file: go.mod
-      - uses: actions/setup-node@v6.5.0
-        with:
-          node-version: '24.20.0'
-      - run: npm install -g pnpm@12.23.0
-      - if: matrix.platform == 'linux'
+          version: '2026.11.14'
+      - name: Install Windows build dependencies
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          C:/msys64/usr/bin/bash.exe -lc "pacman -S --noconfirm --needed mingw-w64-ucrt-x86_64-gcc"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          'C:/msys64/ucrt64/bin' >> $env:GITHUB_PATH
+      - name: Install Linux build dependencies
+        if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
-      - run: pnpm --dir frontend install --frozen-lockfile
-      - run: pnpm --dir frontend build
-      - run: node scripts/bundle-frp.mjs
+          sudo apt-get install -y libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev
+      - run: go run ./scripts
       - if: matrix.platform == 'windows'
         run: ./internal/relay/bin/frpc.exe --version
       - if: matrix.platform != 'windows'
         run: ./internal/relay/bin/frpc --version
       - shell: pwsh
-        run: Copy-Item LICENSE build/tovela-LICENSE
-      - run: go test ./...
-      - if: matrix.platform == 'linux'
+        run: Copy-Item LICENSE build/LICENSE
+      - run: go test -tags ci ./...
+      - name: Build the desktop app
+        shell: pwsh
+        env:
+          GOOGLE_OAUTH_CLIENT_ID: ${{ vars.GOOGLE_OAUTH_CLIENT_ID }}
+          CLOUDFLARE_OAUTH_CLIENT_ID: ${{ vars.CLOUDFLARE_OAUTH_CLIENT_ID }}
         run: |
-          pnpm --dir frontend exec playwright install --with-deps chromium
-          pnpm --dir frontend test
-      - if: matrix.platform == 'windows'
-        run: go build -trimpath -tags production -ldflags=-H=windowsgui -o build/Tovela.exe .
-      - if: matrix.platform == 'linux'
-        run: go build -trimpath -tags production -o build/tovela .
-      - if: matrix.platform == 'macos'
-        run: |
-          app='build/Tovela.app/Contents'
-          mkdir -p "$app/MacOS"
-          cp scripts/macos-info.plist "$app/Info.plist"
-          go build -trimpath -tags production -o "$app/MacOS/Tovela" .
+          $flags = @('-s', '-w')
+          if ($env:GOOGLE_OAUTH_CLIENT_ID -match '^[a-zA-Z0-9._-]+$') {
+            $flags += '-X', "main.googleOAuthClientID=$env:GOOGLE_OAUTH_CLIENT_ID"
+          }
+          if ($env:CLOUDFLARE_OAUTH_CLIENT_ID -match '^[a-zA-Z0-9._-]+$') {
+            $flags += '-X', "main.cloudflareOAuthClientID=$env:CLOUDFLARE_OAUTH_CLIENT_ID"
+          }
+          switch ($env:RUNNER_OS) {
+            'Windows' { $output = 'build/Tovela.exe'; $flags += '-H=windowsgui' }
+            'Linux' { $output = 'build/tovela' }
+            'macOS' {
+              New-Item -ItemType Directory -Path build/Tovela.app/Contents/MacOS -Force | Out-Null
+              Copy-Item scripts/macos-info.plist build/Tovela.app/Contents/Info.plist
+              $output = 'build/Tovela.app/Contents/MacOS/Tovela'
+            }
+          }
+          go build -trimpath "-ldflags=$($flags -join ' ')" -o $output .
       - if: matrix.platform != 'windows'
         run: tar -czf "tovela-${{ matrix.platform }}.tar.gz" -C build .
       - uses: actions/upload-artifact@v7.0.2
@@ -67,5 +80,5 @@ jobs:
             tovela-${{ matrix.platform }}.tar.gz
             build/*.exe
             build/frp-LICENSE
-            build/tovela-LICENSE
+            build/LICENSE
           if-no-files-found: error

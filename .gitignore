@@ -1,7 +1,4 @@
 /build/
-/frontend/dist/
-/frontend/node_modules/
-/frontend/playwright-report/
-/frontend/test-results/
+/internal/desktop/testdata/failed/
 /internal/relay/bin/*
 !/internal/relay/bin/.gitkeep

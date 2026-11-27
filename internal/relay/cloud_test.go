@@ -131,3 +131,31 @@ func TestExistingDNSRequiresReplacementConsent(t *testing.T) {
 		t.Fatalf("unexpected replacement plan: %+v, %v", deletes, err)
 	}
 }
+
+func TestCloudflareZoneSelection(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		override string
+		zones    map[string]string
+		want     string
+	}{
+		{name: "nearest managed zone", zones: map[string]string{"games.example.com": "games", "example.com": "root"}, want: "games"},
+		{name: "parent zone", zones: map[string]string{"example.com": "root"}, want: "root"},
+		{name: "explicit zone", override: "example.com", zones: map[string]string{"games.example.com": "games", "example.com": "root"}, want: "root"},
+		{name: "missing explicit zone", override: "games.example.com", zones: map[string]string{"example.com": "root"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client := &http.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
+				if id := tc.zones[r.URL.Query().Get("name")]; id != "" {
+					return reply(200, `{"result":[{"id":"`+id+`"}]}`)
+				}
+				return reply(200, `{"result":[]}`)
+			})}
+			dns := cloudflare{client, Config{Domain: "play.games.example.com", CloudflareZone: tc.override}}
+			id, err := dns.zone(t.Context())
+			if id != tc.want || (err != nil) != (tc.want == "") {
+				t.Fatalf("zone() = %q, %v; want %q", id, err, tc.want)
+			}
+		})
+	}
+}

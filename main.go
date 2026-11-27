@@ -1,40 +1,73 @@
 package main
 
 import (
-	"embed"
-	"io/fs"
+	_ "embed"
+	"errors"
 	"log"
+	"os"
+	"path/filepath"
 
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/dialog"
+	"github.com/gofrs/flock"
+	"github.com/sya-ri/tovela/internal/desktop"
 	"github.com/sya-ri/tovela/internal/relay"
-	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-//go:embed all:frontend/dist
-var frontend embed.FS
+//go:embed docs/brand/icon.svg
+var icon []byte
 
 var googleOAuthClientID, cloudflareOAuthClientID string
 
 func main() {
-	assets, err := fs.Sub(frontend, "frontend/dist")
+	a := app.NewWithID("dev.sya-ri.tovela")
+	a.SetIcon(fyne.NewStaticResource("icon.svg", icon))
+	window := a.NewWindow("Tovela")
+	window.Resize(fyne.NewSize(610, 500))
+
+	lock, err := lockInstance()
 	if err != nil {
-		log.Fatal(err)
+		d := dialog.NewError(err, window)
+		d.SetOnClosed(a.Quit)
+		d.Show()
+		window.ShowAndRun()
+		return
 	}
+	defer func() {
+		if err := lock.Close(); err != nil {
+			log.Print(err)
+		}
+	}()
+
 	service, err := relay.NewDesktop(googleOAuthClientID, cloudflareOAuthClientID)
 	if err != nil {
-		log.Fatal(err)
+		d := dialog.NewError(err, window)
+		d.SetOnClosed(a.Quit)
+		d.Show()
+		window.ShowAndRun()
+		return
 	}
-	app := application.New(application.Options{
-		Name:           "Tovela",
-		SingleInstance: &application.SingleInstanceOptions{UniqueID: "dev.sya-ri.tovela"},
-		Services:       []application.Service{application.NewService(service)},
-		Assets:         application.AssetOptions{Handler: application.AssetFileServerFS(assets)},
-		Mac:            application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},
-	})
-	app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title: "Tovela", Width: 760, Height: 680, MinWidth: 500, MinHeight: 470,
-		URL: "/", BackgroundColour: application.NewRGB(242, 241, 247),
-	})
-	if err := app.Run(); err != nil {
-		log.Fatal(err)
+	a.Settings().SetTheme(desktop.Theme())
+	desktop.Run(a, window, service)
+}
+
+func lockInstance() (*flock.Flock, error) {
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		return nil, err
 	}
+	dir := filepath.Join(configDir, "tovela")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return nil, err
+	}
+	lock := flock.New(filepath.Join(dir, "app.lock"))
+	ok, err := lock.TryLock()
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, errors.New("Tovela is already open.")
+	}
+	return lock, nil
 }

@@ -13,7 +13,7 @@ flowchart LR
     Local <-->|"Local TCP / UDP"| Server["Minecraft / UDP service"]
 ```
 
-Go manages the cloud APIs and the `frpc` process. Wails and React render the desktop interface on Windows, macOS, and Linux. Linux uses GTK4 and WebKitGTK 6.0. The interface shows each relay's hostname, expiry, and controls. Use icons and layout alongside actionable labels and errors.
+The Go app uses Fyne for its desktop UI and bundles `frpc`. Each profile shows its hostname, expiry, and relay controls. The app finds the Cloudflare zone matching the hostname unless the operator selects a zone.
 
 ## Relay lifecycle
 
@@ -40,4 +40,4 @@ The build bundles a pinned `frpc` for the target OS and CPU. The VM downloads an
 
 - [GCE instance creation](https://docs.cloud.google.com/compute/docs/reference/rest/v1/instances/insert), [VM names](https://docs.cloud.google.com/compute/docs/naming-resources), and [VM runtime limits](https://docs.cloud.google.com/compute/docs/instances/limit-vm-runtime)
 - [Google desktop OAuth](https://developers.google.com/identity/protocols/oauth2/native-app), [Cloudflare OAuth clients](https://developers.cloudflare.com/fundamentals/oauth/create-an-oauth-client/), and [Cloudflare DNS updates](https://developers.cloudflare.com/api/resources/dns/subresources/records/methods/edit/)
-- [frp TCP and UDP](https://gofrp.org/en/docs/features/tcp-udp/) and [Wails platforms](https://wails.io/faq/)
+- [frp TCP and UDP](https://gofrp.org/en/docs/features/tcp-udp/) and [Fyne platforms](https://docs.fyne.io/started/quick/)

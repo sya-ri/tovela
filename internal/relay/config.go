@@ -51,9 +51,12 @@ func (c Config) validate() error {
 	if !projectPattern.MatchString(c.Project) || !zonePattern.MatchString(c.Zone) || !resourcePattern.MatchString(c.Network) {
 		return errors.New("Enter a valid Google Cloud project ID, Tokyo zone, and VPC network name.")
 	}
-	if len(c.Domain) > 253 || !domainPattern.MatchString(c.Domain) || !domainPattern.MatchString(c.CloudflareZone) ||
-		(c.Domain != c.CloudflareZone && !strings.HasSuffix(c.Domain, "."+c.CloudflareZone)) {
-		return errors.New("Enter a hostname and its Cloudflare zone.")
+	if len(c.Domain) > 253 || !domainPattern.MatchString(c.Domain) {
+		return errors.New("Enter a valid hostname.")
+	}
+	if c.CloudflareZone != "" && (!domainPattern.MatchString(c.CloudflareZone) ||
+		(c.Domain != c.CloudflareZone && !strings.HasSuffix(c.Domain, "."+c.CloudflareZone))) {
+		return errors.New("Enter a Cloudflare zone that contains the hostname.")
 	}
 	if c.TCPPort < 1 || c.TCPPort > 65535 || c.UDPPort < 0 || c.UDPPort > 65535 || c.Hours < 1 || c.Hours > 12 {
 		return errors.New("Check the port numbers and duration.")

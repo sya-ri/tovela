@@ -38,6 +38,7 @@ type identity struct {
 	PrivateKey  []byte
 	Deadline    time.Time
 	InstanceID  string
+	DNSZoneID   string
 	PublicIP    string
 	TCPPort     int
 	UDPPort     int

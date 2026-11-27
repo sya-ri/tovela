@@ -4,9 +4,9 @@
 
 Tovela is a desktop app for sharing local Minecraft Java servers through temporary Google Compute Engine (GCE) relays. Each relay supports a custom hostname and an optional UDP port. Start, extend, or stop each relay from Windows, macOS, or Linux.
 
-## Getting started
+## Requirements
 
-Tovela is in development. A relay requires a Google Cloud project with billing and a domain managed in Cloudflare. See the [design](docs/design.md) for how the relay works.
+Run a local Minecraft Java server and bring a Google Cloud project with billing and a Cloudflare-managed domain. The app bundles frp. See the [design](docs/design.md) and [development notes](docs/development.md).
 
 ## Service comparison
 

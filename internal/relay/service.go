@@ -187,9 +187,12 @@ func (s *Service) Start(ctx context.Context, replaceDNS bool) (err error) {
 	}
 	gce = compute{google, config}
 	dns = cloudflare{cf, config}
-	zoneID, err = dns.zone(ctx)
-	if err != nil {
-		return err
+	zoneID = session.DNSZoneID
+	if zoneID == "" {
+		zoneID, err = dns.zone(ctx)
+		if err != nil {
+			return err
+		}
 	}
 
 	vm, err := gce.lookup(ctx)
@@ -221,6 +224,7 @@ func (s *Service) Start(ctx context.Context, replaceDNS bool) (err error) {
 			if err != nil {
 				return err
 			}
+			session.DNSZoneID = zoneID
 			if err := writeCredential(key, session); err != nil {
 				return err
 			}
@@ -241,6 +245,7 @@ func (s *Service) Start(ctx context.Context, replaceDNS bool) (err error) {
 		return errors.New("The VM ID does not match the saved session.")
 	}
 	session.InstanceID, session.PublicIP = vm.ID, vm.ip()
+	session.DNSZoneID = zoneID
 	if deadline := vm.expiry(); !deadline.IsZero() {
 		session.Deadline = deadline
 	}
@@ -389,6 +394,9 @@ func (s *Service) removeRelay(ctx context.Context, config Config, session identi
 	if cf != nil {
 		dns := cloudflare{cf, config}
 		dnsCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		if zoneID == "" {
+			zoneID = session.DNSZoneID
+		}
 		if zoneID == "" {
 			zoneID, dnsErr = dns.zone(dnsCtx)
 		}

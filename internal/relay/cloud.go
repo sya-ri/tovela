@@ -270,15 +270,30 @@ type cloudflare struct {
 }
 
 func (c cloudflare) zone(ctx context.Context) (string, error) {
-	var response struct{ Result []struct{ ID string } }
-	err := request(ctx, c.client, http.MethodGet, cfEndpoint+"/zones?name="+url.QueryEscape(c.config.CloudflareZone), nil, &response)
-	if err != nil {
-		return "", err
+	explicit := c.config.CloudflareZone
+	zone := explicit
+	if zone == "" {
+		zone = c.config.Domain
 	}
-	if len(response.Result) != 1 {
-		return "", fmt.Errorf("Cloudflare zone %s was not found or is ambiguous", c.config.CloudflareZone)
+	for strings.Contains(zone, ".") {
+		var response struct{ Result []struct{ ID string } }
+		err := request(ctx, c.client, http.MethodGet, cfEndpoint+"/zones?name="+url.QueryEscape(zone), nil, &response)
+		if err != nil {
+			return "", err
+		}
+		switch len(response.Result) {
+		case 1:
+			return response.Result[0].ID, nil
+		case 0:
+			if explicit != "" {
+				return "", fmt.Errorf("Cloudflare zone %s was not found", zone)
+			}
+		default:
+			return "", fmt.Errorf("Cloudflare zone %s is ambiguous", zone)
+		}
+		_, zone, _ = strings.Cut(zone, ".")
 	}
-	return response.Result[0].ID, nil
+	return "", fmt.Errorf("No Cloudflare zone found for %s", c.config.Domain)
 }
 
 func (c cloudflare) records(ctx context.Context, root, name string) ([]dnsRecord, error) {
