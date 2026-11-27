@@ -158,7 +158,8 @@ func (v *view) openSettings() {
 	message := widget.NewLabel("")
 	message.Wrapping = fyne.TextWrapWord
 	formContent := container.NewVScroll(container.NewVBox(form, advanced))
-	signIn := container.NewGridWithColumns(2, google, cloudflare)
+	cloudflareButton := container.NewThemeOverride(cloudflare, cloudflareButtonTheme{cloudflare.Theme()})
+	signIn := container.NewGridWithColumns(2, google, cloudflareButton)
 	ok := widget.NewButtonWithIcon(locale.T("Save"), theme.ConfirmIcon(), nil)
 	ok.Importance = widget.HighImportance
 	closeButton := widget.NewButton(locale.T("Close"), nil)
@@ -234,7 +235,7 @@ func (v *view) openSettings() {
 		v.render()
 	})
 	v.settingsChanged()
-	d.Resize(v.window.Canvas().Size().Subtract(fyne.NewSize(64, 64)))
+	d.Resize(v.window.Canvas().Size().Subtract(fyne.NewSize(64, 52)))
 	d.Show()
 	loadZones(false, nil)
 }
