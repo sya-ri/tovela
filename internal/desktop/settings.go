@@ -3,7 +3,6 @@ package desktop
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -21,10 +20,10 @@ func (v *view) openSettings() {
 	v.problem = ""
 	config := v.state.Config
 	domain := entry(config.Domain, "mc.example.com")
-	project := entry(config.Project, locale.T("Project ID"))
+	project := entry(config.Project, "")
 	tcp := entry(strconv.Itoa(config.TCPPort), "25565")
 	udp := entry("", locale.T("UDP port"))
-	udpEnabled := widget.NewCheck(locale.T("Enable UDP"), nil)
+	udpEnabled := widget.NewCheck("UDP", nil)
 	udpEnabled.SetChecked(config.UDPPort != 0)
 	if udpEnabled.Checked {
 		udp.SetText(strconv.Itoa(config.UDPPort))
@@ -32,12 +31,7 @@ func (v *view) openSettings() {
 	hours := entry(strconv.Itoa(config.Hours), "4")
 	picker := newZonePicker(v.window, config.Zone)
 	zone := picker.button
-	location := container.NewStack(zone, container.NewBorder(nil, nil, nil, picker.ping))
-	portsAndDuration := container.NewGridWithColumns(3,
-		settingsField("Local TCP port", tcp),
-		container.New(layout.NewCustomPaddedVBoxLayout(4), udpEnabled, udp),
-		settingsField("Duration (h)", hours),
-	)
+
 	var zones []string
 	var closed bool
 	network := entry(config.Network, "default")
@@ -45,17 +39,6 @@ func (v *view) openSettings() {
 	googleID := entry(config.GoogleClientID, locale.T("Client ID"))
 	cfID := entry(config.CloudflareClientID, locale.T("Client ID"))
 
-	identity := widget.NewForm(
-		widget.NewFormItem(locale.T("Hostname"), domain),
-		widget.NewFormItem(locale.T("Google Cloud project"), project),
-	)
-	form := container.NewVBox(identity, settingsField("Relay location", location), portsAndDuration)
-	advanced := widget.NewAccordion(widget.NewAccordionItem(locale.T("Advanced"), container.NewVBox(
-		settingsField("VPC network", network),
-		settingsField("Cloudflare zone", cfZone),
-		settingsField("Google OAuth client ID", googleID),
-		settingsField("Cloudflare OAuth client ID", cfID),
-	)))
 	inputs := []fyne.Disableable{domain, project, tcp, udpEnabled, hours, network, cfZone, googleID, cfID}
 	readConfig := func() (relay.Config, error) {
 		update := relay.Config{
@@ -70,7 +53,7 @@ func (v *view) openSettings() {
 		}{
 			{tcp, "Enter a valid local TCP port.", &update.TCPPort},
 			{udp, "Enter a valid UDP port.", &update.UDPPort},
-			{hours, "Enter a valid duration.", &update.Hours},
+			{hours, "Enter a valid auto-delete interval.", &update.Hours},
 		} {
 			if field.entry == udp && !udpEnabled.Checked {
 				continue
@@ -145,24 +128,46 @@ func (v *view) openSettings() {
 
 	project.OnSubmitted = func(string) { loadZones(nil) }
 
-	google := widget.NewButtonWithIcon("Google", googleIcon, func() {
+	google := widget.NewButtonWithIcon("", googleIcon, func() {
 		perform("google", func() {
 			clear(v.locations)
 			loadZones(nil)
 		})
 	})
-	cloudflare := widget.NewButtonWithIcon("Cloudflare", cloudflareIcon, func() { perform("cloudflare", nil) })
+	cloudflare := widget.NewButtonWithIcon("", cloudflareIcon, func() { perform("cloudflare", nil) })
+	google.Alignment = widget.ButtonAlignLeading
+	cloudflare.Alignment = widget.ButtonAlignLeading
+	cloudflareButton := container.NewThemeOverride(cloudflare, cloudflareButtonTheme{cloudflare.Theme()})
+	ports := container.NewGridWithColumns(2,
+		container.NewVBox(widget.NewLabel("TCP"), tcp),
+		container.NewVBox(udpEnabled, udp),
+	)
+	form := settingsForm(
+		settingRow{label: "Relay"},
+		settingRow{"Hostname", domain},
+		settingRow{"Project ID", project},
+		settingRow{"Relay location", picker.content},
+		settingRow{"Auto-delete after (h)", hours},
+		settingRow{label: "Network"},
+		settingRow{"Local ports", ports},
+		settingRow{label: "Accounts"},
+		settingRow{"Google", google},
+		settingRow{"Cloudflare", cloudflareButton},
+	)
+	advanced := widget.NewAccordion(widget.NewAccordionItem(locale.T("Advanced"), settingsForm(
+		settingRow{"VPC network", network},
+		settingRow{"Cloudflare zone", cfZone},
+		settingRow{"Google OAuth client ID", googleID},
+		settingRow{"Cloudflare OAuth client ID", cfID},
+	)))
 	message := widget.NewLabel("")
 	message.Wrapping = fyne.TextWrapWord
-	formContent := container.NewVScroll(container.NewVBox(form, advanced))
-	cloudflareButton := container.NewThemeOverride(cloudflare, cloudflareButtonTheme{cloudflare.Theme()})
-	signIn := container.NewGridWithColumns(2, google, cloudflareButton)
 	ok := widget.NewButtonWithIcon(locale.T("Save"), theme.ConfirmIcon(), nil)
 	ok.Importance = widget.HighImportance
 	closeButton := widget.NewButton(locale.T("Close"), nil)
-	footer := container.NewVBox(signIn, message, container.NewHBox(layout.NewSpacer(), closeButton, ok))
-	content := container.NewBorder(nil, footer, nil, nil, formContent)
-	d := dialog.NewCustomWithoutButtons(locale.T("Settings"), content, v.window)
+	actions := container.NewHBox(layout.NewSpacer(), closeButton, ok)
+	content := container.NewVScroll(container.NewVBox(form, advanced, message, actions))
+	d := dialog.NewCustomWithoutButtons(locale.T("Settings"), container.NewClip(content), v.window)
 	closeButton.OnTapped = d.Hide
 	save := func() { perform("", d.Hide) }
 	ok.OnTapped = func() {
@@ -186,12 +191,12 @@ func (v *view) openSettings() {
 			if !ready {
 				placeholder = "Sign in to Google"
 			}
-			zone.SetText(locale.T(placeholder))
+			zone.caption.SetText(locale.T(placeholder))
 		}
 		setEnabled(zone, editable && ready && len(zones) > 0)
-		v.updateLogin(google, googleID, ready, "Google")
+		v.updateLogin(google, googleID, ready)
 		cfReady := v.state.CloudflareReady && strings.TrimSpace(cfID.Text) == v.state.Config.CloudflareClientID
-		v.updateLogin(cloudflare, cfID, cfReady, "Cloudflare")
+		v.updateLogin(cloudflare, cfID, cfReady)
 		setEnabled(ok, editable)
 		text := v.problem
 		message.Importance = widget.DangerImportance
@@ -199,8 +204,12 @@ func (v *view) openSettings() {
 			message.Importance = widget.LowImportance
 			text = locale.T("Working…")
 		}
+		revealError := !v.busy && text != "" && message.Text != text
 		message.SetText(text)
 		setVisible(message, text != "")
+		if revealError {
+			content.ScrollToBottom()
+		}
 	}
 	projectID, clientID := strings.TrimSpace(project.Text), strings.TrimSpace(googleID.Text)
 	project.OnChanged = func(value string) {
@@ -233,26 +242,44 @@ func (v *view) openSettings() {
 		v.render()
 	})
 	v.settingsChanged()
-	d.Resize(v.window.Canvas().Size().Subtract(fyne.NewSize(64, 24)))
+	canvasSize := v.window.Canvas().Size()
+	horizontalInset := min(64, max(24, canvasSize.Width-490))
+	d.Resize(canvasSize.Subtract(fyne.NewSize(horizontalInset, 24)))
 	d.Show()
 	loadZones(nil)
 }
 
-func (v *view) updateLogin(btn *widget.Button, id *widget.Entry, ready bool, provider string) {
-	label := "Sign in to %s"
+func (v *view) updateLogin(btn *widget.Button, id *widget.Entry, ready bool) {
+	label := "Sign in"
 	if ready {
-		label = "%s connected"
+		label = "Connected"
 	}
-	btn.SetText(fmt.Sprintf(locale.T(label), provider))
+	btn.SetText(locale.T(label))
 	setEnabled(btn, !v.busy && !v.closing && strings.TrimSpace(id.Text) != "")
 }
 
-func settingsField(label string, control fyne.CanvasObject) *fyne.Container {
-	title := widget.NewRichText(&widget.TextSegment{
-		Text:  locale.T(label),
-		Style: widget.RichTextStyle{Inline: true, TextStyle: fyne.TextStyle{Bold: true}},
-	})
-	return container.New(layout.NewCustomPaddedVBoxLayout(4), title, control)
+type settingRow struct {
+	label   string
+	control fyne.CanvasObject
+}
+
+func settingsForm(rows ...settingRow) *fyne.Container {
+	cells := make([]fyne.CanvasObject, 0, 2*len(rows))
+	for i, row := range rows {
+		if row.control != nil {
+			cells = append(cells, widget.NewLabel(locale.T(row.label)), row.control)
+			continue
+		}
+
+		heading := widget.NewLabelWithStyle(locale.T(row.label), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+		heading.SizeName = theme.SizeNameSubHeadingText
+		var label fyne.CanvasObject = heading
+		if i > 0 {
+			label = container.New(layout.NewCustomPaddedLayout(12, 0, 0, 0), heading)
+		}
+		cells = append(cells, label, layout.NewSpacer())
+	}
+	return container.New(layout.NewFormLayout(), cells...)
 }
 
 func entry(value, placeholder string) *widget.Entry {

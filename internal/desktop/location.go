@@ -9,6 +9,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 	"github.com/sya-ri/tovela/internal/locale"
@@ -65,18 +66,36 @@ func fastestZone(zones []string, latencies map[string]time.Duration) string {
 
 // zonePicker keeps the displayed latency separate from the persisted zone ID.
 type zonePicker struct {
-	button    *widget.Button
+	button    *zoneButton
 	ping      *widget.Label
+	content   *fyne.Container
 	zone      string
 	zones     []string
 	latencies map[string]time.Duration
 }
 
+type zoneButton struct {
+	widget.Button
+	caption *widget.Label
+}
+
+func (b *zoneButton) AccessibilityLabel() string {
+	return b.caption.Text
+}
+
 func newZonePicker(window fyne.Window, saved string) *zonePicker {
 	picker := &zonePicker{ping: widget.NewLabelWithStyle("", fyne.TextAlignTrailing, fyne.TextStyle{})}
-	picker.button = widget.NewButtonWithIcon("", theme.MenuDropDownIcon(), func() { picker.open(window) })
-	picker.button.Alignment = widget.ButtonAlignLeading
-	picker.button.IconPlacement = widget.ButtonIconTrailingText
+	caption := widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	caption.Truncation = fyne.TextTruncateEllipsis
+	picker.button = &zoneButton{caption: caption}
+	picker.button.ExtendBaseWidget(picker.button)
+	picker.button.Alignment = widget.ButtonAlignTrailing
+	picker.button.Icon = theme.MenuDropDownIcon()
+	picker.button.OnTapped = func() { picker.open(window) }
+	arrowSpace := theme.Size(theme.SizeNameInlineIcon) + theme.Size(theme.SizeNameInnerPadding)
+	latency := container.New(layout.NewCustomPaddedLayout(0, 0, 8, 0), picker.ping)
+	values := container.NewBorder(nil, nil, nil, latency, caption)
+	picker.content = container.NewStack(picker.button, container.New(layout.NewCustomPaddedLayout(0, 0, 0, arrowSpace), values))
 	if saved != "" {
 		picker.zones = []string{saved}
 	}
@@ -102,12 +121,13 @@ func (p *zonePicker) selectZone(zone string) {
 	}
 	p.zone = zone
 	if zone == "" {
-		p.button.SetText(locale.T("Choose a zone"))
-		p.ping.SetText("")
+		p.button.caption.SetText(locale.T("Choose a zone"))
+		p.ping.Hide()
 		return
 	}
-	p.button.SetText(zone)
+	p.button.caption.SetText(zone)
 	p.ping.SetText(formatLatency(p.latencies[zone]))
+	p.ping.Show()
 }
 
 func formatLatency(duration time.Duration) string {

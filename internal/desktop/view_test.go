@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
@@ -88,6 +89,7 @@ func TestRelayScreens(t *testing.T) {
 		{name: "settings-ja", locale: "ja-JP", phase: "idle"},
 		{name: "settings-udp-off", phase: "idle"},
 		{name: "settings-narrow-ja", locale: "ja-JP", phase: "idle", narrow: true},
+		{name: "settings-bottom-ja", locale: "ja-JP", phase: "idle"},
 		{name: "frpc-blocked-ja", locale: "ja-JP", phase: "idle"},
 		{name: "dns-conflict-ja", locale: "ja-JP", phase: "idle"},
 	} {
@@ -106,7 +108,10 @@ func TestRelayScreens(t *testing.T) {
 			defer window.Close()
 			size := fyne.NewSize(610, 500)
 			if screen.narrow {
-				size = fyne.NewSize(500, 445)
+				size = fyne.NewSize(500, 410)
+			}
+			if screen.name == "settings-bottom-ja" {
+				size.Height = 528
 			}
 			window.Resize(size)
 			config := relay.DefaultConfig("google-client", "cloudflare-client")
@@ -133,11 +138,17 @@ func TestRelayScreens(t *testing.T) {
 			}
 			v := newView(window, snapshotBackend{state: state}, fyne.NewStaticResource("icon.svg", icon))
 			switch screen.name {
-			case "settings", "settings-options", "settings-ja", "settings-narrow-ja", "settings-udp-off":
+			case "settings", "settings-options", "settings-ja", "settings-narrow-ja", "settings-udp-off", "settings-bottom-ja":
 				test.Tap(v.settings)
 				waitForAction(t, v)
-				if screen.name == "settings-options" {
-					test.Tap(locationPicker(t, v))
+				switch screen.name {
+				case "settings-options":
+					picker := locationPicker(t, v)
+					position := fyne.CurrentApp().Driver().AbsolutePositionForObject(picker)
+					test.TapCanvas(window.Canvas(), position.AddXY(picker.Size().Width-16, picker.Size().Height/2))
+					locationList(t, v)
+				case "settings-bottom-ja":
+					checkSettingsScroll(t, v)
 				}
 			case "frpc-blocked", "frpc-blocked-ja":
 				v.showProtectionHistory()
@@ -147,7 +158,7 @@ func TestRelayScreens(t *testing.T) {
 			test.AssertRendersToImage(t, screen.name+".png", window.Canvas())
 			switch screen.name {
 			case "settings":
-				if zone := locationPicker(t, v).Text; zone != config.Zone {
+				if zone := locationPicker(t, v).AccessibilityLabel(); zone != config.Zone {
 					t.Errorf("saved zone reopened as %q, want %q", zone, config.Zone)
 				}
 			case "setup":
@@ -176,8 +187,8 @@ func TestInitialLocationUsesOneRequestAndMeasurement(t *testing.T) {
 	test.Tap(v.settings)
 	waitForAction(t, v)
 	zone := locationPicker(t, v)
-	if zone.Text != "europe-west2-a" {
-		t.Fatalf("initial zone = %q, want europe-west2-a", zone.Text)
+	if zone.AccessibilityLabel() != "europe-west2-a" {
+		t.Fatalf("initial zone = %q, want europe-west2-a", zone.AccessibilityLabel())
 	}
 	test.Tap(zone)
 	list := locationList(t, v)
@@ -185,8 +196,8 @@ func TestInitialLocationUsesOneRequestAndMeasurement(t *testing.T) {
 		list.TypedKey(&fyne.KeyEvent{Name: fyne.KeyDown})
 	}
 	list.TypedKey(&fyne.KeyEvent{Name: fyne.KeySpace})
-	if zone.Text != "us-central1-f" {
-		t.Errorf("manual zone = %q, want us-central1-f", zone.Text)
+	if zone.AccessibilityLabel() != "us-central1-f" {
+		t.Errorf("manual zone = %q, want us-central1-f", zone.AccessibilityLabel())
 	}
 	test.Tap(settingsButton(t, v, "Close"))
 	test.Tap(v.settings)
@@ -215,10 +226,44 @@ func (b *countedLocationBackend) MeasureRelayZones(ctx context.Context, zones []
 	return b.snapshotBackend.MeasureRelayZones(ctx, zones)
 }
 
-func locationPicker(t *testing.T, v *view) *widget.Button {
+func checkSettingsScroll(t *testing.T, v *view) {
+	t.Helper()
+	var settings *container.Scroll
+	var signIn []*widget.Button
+	for _, object := range test.LaidOutObjects(v.window.Canvas().Overlays().Top()) {
+		switch control := object.(type) {
+		case *container.Scroll:
+			if settings == nil && control.Direction == container.ScrollVerticalOnly {
+				settings = control
+			}
+		case *widget.Button:
+			if control.Icon == googleIcon || control.Icon == cloudflareIcon {
+				signIn = append(signIn, control)
+			}
+		}
+	}
+	if settings == nil || len(signIn) != 2 {
+		t.Fatal("The scrollable settings or account rows are unavailable.")
+	}
+
+	driver := fyne.CurrentApp().Driver()
+	buttons := append(signIn, settingsButton(t, v, locale.T("Save")))
+	positions := make([]float32, len(buttons))
+	for i, button := range buttons {
+		positions[i] = driver.AbsolutePositionForObject(button).Y
+	}
+	settings.ScrollToBottom()
+	for i, button := range buttons {
+		if driver.AbsolutePositionForObject(button).Y >= positions[i] {
+			t.Errorf("%q did not scroll with the settings form", button.Text)
+		}
+	}
+}
+
+func locationPicker(t *testing.T, v *view) *zoneButton {
 	t.Helper()
 	for _, object := range test.LaidOutObjects(v.window.Canvas().Overlays().Top()) {
-		if button, ok := object.(*widget.Button); ok && button.IconPlacement == widget.ButtonIconTrailingText && !button.Disabled() {
+		if button, ok := object.(*zoneButton); ok && !button.Disabled() {
 			return button
 		}
 	}
@@ -353,7 +398,7 @@ func udpControls(t *testing.T, v *view) (*widget.Check, *widget.Entry) {
 	for _, object := range test.LaidOutObjects(v.window.Canvas().Overlays().Top()) {
 		switch control := object.(type) {
 		case *widget.Check:
-			if control.Text == "Enable UDP" {
+			if control.Text == "UDP" {
 				toggle = control
 			}
 		case *widget.Entry:
