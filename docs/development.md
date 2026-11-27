@@ -12,7 +12,8 @@ The tests use Fyne's software renderer to compare snapshots and exercise control
 
 ## Cloud requirements
 
-- Google Cloud needs the [Compute Engine API](https://docs.cloud.google.com/compute/docs/access/iam) and permission to list and read machine types (`compute.machineTypes.list` and `compute.machineTypes.get`) and to create, update, and delete instances and boot disks with external IPv4 addresses. On the VPC, allow TCP 7000 and the public TCP and UDP ports configured for each profile on instances tagged `tovela`. [Firewall rules](https://docs.cloud.google.com/firewall/docs/using-firewalls)
+- Google Cloud needs the [Compute Engine API](https://docs.cloud.google.com/compute/docs/access/iam) and permission to list and read machine types (`compute.machineTypes.list` and `compute.machineTypes.get`) and to create, update, and delete instances and boot disks with external IPv4 addresses.
+- Tovela uses your VPC firewall rules. Allow the configured public TCP and UDP ports on VMs tagged `tovela`. Restrict the FRP control port (TCP 7000) to the host computer's public IP when possible. Review network-wide rules such as the default SSH rule. [Firewall rules](https://docs.cloud.google.com/firewall/docs/firewalls)
 - A [Google desktop OAuth client](https://developers.google.com/identity/protocols/oauth2/native-app) and a [Cloudflare OAuth client](https://developers.cloudflare.com/fundamentals/oauth/create-an-oauth-client/) let the operator sign in. The Cloudflare client uses authorization code and refresh token grants, public token authentication, Zone Read and DNS Write, and the redirect URI `http://127.0.0.1:42813/callback`. Supply public IDs through the workflow variables `GOOGLE_OAUTH_CLIENT_ID` and `CLOUDFLARE_OAUTH_CLIENT_ID` for distribution, or enter them under **Advanced** in the app.
 - Linux needs a running Secret Service provider for credentials.
 
