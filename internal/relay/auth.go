@@ -161,7 +161,9 @@ func authenticatedClient(ctx context.Context, config Config, provider string) (*
 		return nil, fmt.Errorf(locale.T("Sign in to %s in Settings."), provider)
 	}
 	ctx = context.WithValue(ctx, oauth2.HTTPClient, &http.Client{Timeout: 15 * time.Second})
-	client := oauth2.NewClient(ctx, &savedTokens{ctx: ctx, cfg: cfg, key: key})
+	// Reuse valid tokens within one cloud operation. The source reloads rotated tokens when refreshing.
+	source := oauth2.ReuseTokenSource(&token, &savedTokens{ctx: ctx, cfg: cfg, key: key})
+	client := oauth2.NewClient(ctx, source)
 	client.Timeout = 15 * time.Second
 	return client, nil
 }

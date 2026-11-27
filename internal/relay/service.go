@@ -190,10 +190,6 @@ func (s *Service) Start(ctx context.Context, replaceDNS bool) (err error) {
 			return fmt.Errorf(locale.T("Check your local TCP service on port %d: %w"), port.LocalPort, err)
 		}
 	}
-	frpcPath, err = prepareFrpc(ctx)
-	if err != nil {
-		return err
-	}
 	google, err := authenticatedClient(context.Background(), config, "google")
 	if err != nil {
 		return err
@@ -233,6 +229,10 @@ func (s *Service) Start(ctx context.Context, replaceDNS bool) (err error) {
 		return errors.New(locale.T("The existing relay uses different ports. Stop it first."))
 	}
 	if _, err := dns.ensureAvailable(ctx, cfEndpoint+"/zones/"+zoneID+"/dns_records", session, replaceDNS); err != nil {
+		return err
+	}
+	frpcPath, err = prepareFrpc(ctx)
+	if err != nil {
 		return err
 	}
 	if vm == nil {
