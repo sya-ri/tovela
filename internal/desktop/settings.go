@@ -29,13 +29,15 @@ func (v *view) openSettings() {
 		udp.SetText(strconv.Itoa(config.UDPPort))
 	}
 	hours := entry(strconv.Itoa(config.Hours), "4")
-	zone := &widget.Select{PlaceHolder: locale.T("Choose a zone")}
-	if config.Zone != "" {
-		zone.SetOptions([]string{config.Zone})
-		zone.SetSelected(config.Zone)
-	}
+	picker := newZonePicker(config.Zone)
+	zone := picker.selectBox
 	automatic := widget.NewButton(locale.T("Auto-select"), nil)
 	location := container.NewBorder(nil, nil, nil, automatic, zone)
+	portsAndDuration := container.NewGridWithColumns(3,
+		settingsField("Local TCP port", tcp),
+		settingsField("UDP port", udp),
+		settingsField("Duration (h)", hours),
+	)
 	var zones []string
 	var closed bool
 	network := entry(config.Network, "default")
@@ -43,24 +45,21 @@ func (v *view) openSettings() {
 	googleID := entry(config.GoogleClientID, locale.T("Client ID"))
 	cfID := entry(config.CloudflareClientID, locale.T("Client ID"))
 
-	form := widget.NewForm(
+	identity := widget.NewForm(
 		widget.NewFormItem(locale.T("Hostname"), domain),
 		widget.NewFormItem(locale.T("Google Cloud project"), project),
-		widget.NewFormItem(locale.T("Relay location"), location),
-		widget.NewFormItem(locale.T("Local TCP port"), tcp),
-		widget.NewFormItem(locale.T("UDP port"), udp),
-		widget.NewFormItem(locale.T("Duration (h)"), hours),
 	)
-	advanced := widget.NewAccordion(widget.NewAccordionItem(locale.T("Advanced"), widget.NewForm(
-		widget.NewFormItem(locale.T("VPC network"), network),
-		widget.NewFormItem(locale.T("Cloudflare zone"), cfZone),
-		widget.NewFormItem(locale.T("Google OAuth client ID"), googleID),
-		widget.NewFormItem(locale.T("Cloudflare OAuth client ID"), cfID),
+	form := container.NewVBox(identity, settingsField("Relay location", location), portsAndDuration)
+	advanced := widget.NewAccordion(widget.NewAccordionItem(locale.T("Advanced"), container.NewVBox(
+		settingsField("VPC network", network),
+		settingsField("Cloudflare zone", cfZone),
+		settingsField("Google OAuth client ID", googleID),
+		settingsField("Cloudflare OAuth client ID", cfID),
 	)))
 	inputs := []fyne.Disableable{domain, project, tcp, udp, hours, network, cfZone, googleID, cfID}
 	readConfig := func() (relay.Config, error) {
 		update := relay.Config{
-			Project: project.Text, Zone: zone.Selected, Network: strings.TrimSpace(network.Text),
+			Project: project.Text, Zone: picker.selected(), Network: strings.TrimSpace(network.Text),
 			Domain: domain.Text, CloudflareZone: cfZone.Text,
 			GoogleClientID: googleID.Text, CloudflareClientID: cfID.Text,
 		}
@@ -122,16 +121,17 @@ func (v *view) openSettings() {
 			return
 		}
 		key := locationKey{strings.TrimSpace(project.Text), strings.TrimSpace(googleID.Text)}
-		recommend := automatic || zone.Selected == ""
-		v.loadLocations(key, recommend, automatic, func(choices locationChoices) {
+		recommend := automatic || picker.selected() == ""
+		v.loadLocations(key, automatic, func(choices locationChoices) {
 			if closed {
 				return
 			}
 			zones = choices.zones
 			if len(zones) > 0 {
-				setLocationOptions(zone, zones)
-				if recommend && choices.suggested != "" {
-					zone.SetSelected(choices.suggested)
+				latencies := choices.latencies
+				picker.setOptions(zones, latencies)
+				if recommend {
+					picker.selectZone(fastestZone(zones, latencies))
 				}
 			}
 			v.problem = ""
@@ -139,7 +139,7 @@ func (v *view) openSettings() {
 				v.problem = choices.err.Error()
 			}
 			v.render()
-			if after != nil && zone.Selected != "" {
+			if after != nil && picker.selected() != "" {
 				after()
 			}
 		})
@@ -169,7 +169,7 @@ func (v *view) openSettings() {
 	closeButton.OnTapped = d.Hide
 	save := func() { perform("", d.Hide) }
 	ok.OnTapped = func() {
-		if zone.Selected == "" && canLoad() && len(zones) == 0 {
+		if picker.selected() == "" && canLoad() && len(zones) == 0 {
 			loadZones(false, save)
 			return
 		}
@@ -212,10 +212,10 @@ func (v *view) openSettings() {
 			projectID = trimmed
 			zones = nil
 			if projectID == config.Project && config.Zone != "" {
-				zone.SetOptions([]string{config.Zone})
-				zone.SetSelected(config.Zone)
+				picker.setOptions([]string{config.Zone}, nil)
+				picker.selectZone(config.Zone)
 			} else {
-				setLocationOptions(zone, nil)
+				picker.setOptions(nil, nil)
 			}
 		}
 		v.settingsChanged()
@@ -235,7 +235,7 @@ func (v *view) openSettings() {
 		v.render()
 	})
 	v.settingsChanged()
-	d.Resize(v.window.Canvas().Size().Subtract(fyne.NewSize(64, 52)))
+	d.Resize(v.window.Canvas().Size().Subtract(fyne.NewSize(64, 24)))
 	d.Show()
 	loadZones(false, nil)
 }
@@ -247,6 +247,14 @@ func (v *view) updateLogin(btn *widget.Button, id *widget.Entry, ready bool, pro
 	}
 	btn.SetText(fmt.Sprintf(locale.T(label), provider))
 	setEnabled(btn, !v.busy && !v.closing && strings.TrimSpace(id.Text) != "")
+}
+
+func settingsField(label string, control fyne.CanvasObject) *fyne.Container {
+	title := widget.NewRichText(&widget.TextSegment{
+		Text:  locale.T(label),
+		Style: widget.RichTextStyle{Inline: true, TextStyle: fyne.TextStyle{Bold: true}},
+	})
+	return container.New(layout.NewCustomPaddedVBoxLayout(4), title, control)
 }
 
 func entry(value, placeholder string) *widget.Entry {

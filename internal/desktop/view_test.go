@@ -29,13 +29,20 @@ func (b snapshotBackend) RelayZones(context.Context, string, string) ([]string, 
 	return []string{"asia-northeast1-b", "europe-west2-a", "northamerica-northeast2-a", "southamerica-east1-b", "us-central1-f"}, nil
 }
 
-func (b snapshotBackend) FastestRelayZone(_ context.Context, zones []string) (string, error) {
+func (b snapshotBackend) MeasureRelayZones(_ context.Context, zones []string) (map[string]time.Duration, error) {
+	latencies := make(map[string]time.Duration)
+	available := map[string]time.Duration{
+		"asia-northeast1-b":         180 * time.Millisecond,
+		"europe-west2-a":            28 * time.Millisecond,
+		"northamerica-northeast2-a": 91 * time.Millisecond,
+		"us-central1-f":             114 * time.Millisecond,
+	}
 	for _, zone := range zones {
-		if zone == "europe-west2-a" {
-			return zone, nil
+		if duration := available[zone]; duration > 0 {
+			latencies[zone] = duration
 		}
 	}
-	return "", errors.New("the loaded zones did not include the fastest zone")
+	return latencies, nil
 }
 
 func waitForAction(t *testing.T, v *view) {
@@ -47,12 +54,13 @@ func waitForAction(t *testing.T, v *view) {
 	}
 }
 
-type lightTheme struct {
+type snapshotTheme struct {
 	fyne.Theme
+	variant fyne.ThemeVariant
 }
 
-func (th lightTheme) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) color.Color {
-	return th.Theme.Color(name, theme.VariantLight)
+func (th snapshotTheme) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) color.Color {
+	return th.Theme.Color(name, th.variant)
 }
 
 func TestRelayScreens(t *testing.T) {
@@ -65,14 +73,20 @@ func TestRelayScreens(t *testing.T) {
 		locale  string
 		phase   string
 		problem string
+		dark    bool
+		narrow  bool
 	}{
+		{name: "setup", phase: "idle"},
 		{name: "stopped", phase: "idle"},
 		{name: "starting", phase: "starting"},
 		{name: "online", phase: "running"},
+		{name: "online-dark", phase: "running", dark: true},
 		{name: "error", phase: "idle", problem: "Check your local Minecraft Java server on port 25565."},
 		{name: "settings", phase: "idle"},
+		{name: "settings-options", phase: "idle"},
 		{name: "frpc-blocked", phase: "idle"},
 		{name: "settings-ja", locale: "ja-JP", phase: "idle"},
+		{name: "settings-narrow-ja", locale: "ja-JP", phase: "idle", narrow: true},
 		{name: "frpc-blocked-ja", locale: "ja-JP", phase: "idle"},
 	} {
 		t.Run(screen.name, func(t *testing.T) {
@@ -81,10 +95,18 @@ func TestRelayScreens(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = locale.Use("en") })
 			a := test.NewTempApp(t)
-			test.ApplyTheme(t, lightTheme{Theme()})
+			variant := theme.VariantLight
+			if screen.dark {
+				variant = theme.VariantDark
+			}
+			test.ApplyTheme(t, snapshotTheme{Theme(), variant})
 			window := a.NewWindow("Tovela")
 			defer window.Close()
-			window.Resize(fyne.NewSize(610, 500))
+			size := fyne.NewSize(610, 500)
+			if screen.narrow {
+				size = fyne.NewSize(500, 445)
+			}
+			window.Resize(size)
 			config := relay.DefaultConfig("google-client", "cloudflare-client")
 			config.Domain, config.Project, config.Zone = "play.example.com", "example-project", "northamerica-northeast2-a"
 			config.UDPPort = 24454
@@ -97,20 +119,35 @@ func TestRelayScreens(t *testing.T) {
 					GoogleReady: true, CloudflareReady: true,
 				},
 			}
+			if screen.name == "setup" {
+				state.Config = relay.DefaultConfig("", "")
+				state.Profiles[0].Domain = ""
+				state.GoogleReady, state.CloudflareReady = false, false
+			}
 			if screen.phase == "running" {
 				state.Deadline = time.Date(2026, 11, 27, 22, 15, 0, 0, time.Local)
 			}
 			v := newView(window, snapshotBackend{state: state}, fyne.NewStaticResource("icon.svg", icon))
 			switch screen.name {
-			case "settings", "settings-ja":
+			case "settings", "settings-options", "settings-ja", "settings-narrow-ja":
 				test.Tap(v.settings)
 				waitForAction(t, v)
+				if screen.name == "settings-options" {
+					test.Tap(locationPicker(t, v))
+				}
 			case "frpc-blocked", "frpc-blocked-ja":
 				v.showProtectionHistory()
 			}
 			test.AssertRendersToImage(t, screen.name+".png", window.Canvas())
-			if screen.name == "settings" {
+			switch screen.name {
+			case "settings":
 				checkAutoSelect(t, v)
+			case "setup":
+				window.Canvas().Focus(v.start)
+				v.start.TypedKey(&fyne.KeyEvent{Name: fyne.KeySpace})
+				if window.Canvas().Overlays().Top() == nil {
+					t.Error("The setup action did not open Settings.")
+				}
 			}
 		})
 	}
@@ -131,13 +168,13 @@ func TestInitialLocationUsesOneRequestAndMeasurement(t *testing.T) {
 	test.Tap(v.settings)
 	waitForAction(t, v)
 	zone := locationPicker(t, v)
-	if zone.Selected != "europe-west2-a" {
+	if zone.Selected != "europe-west2-a   28 ms" {
 		t.Fatalf("initial zone = %q, want europe-west2-a", zone.Selected)
 	}
 
-	zone.SetSelected("us-central1-f")
+	zone.SetSelected("us-central1-f   114 ms")
 	test.Tap(settingsButton(t, v, "Auto-select"))
-	if zone.Selected != "europe-west2-a" {
+	if zone.Selected != "europe-west2-a   28 ms" {
 		t.Errorf("cached suggestion selected %q, want europe-west2-a", zone.Selected)
 	}
 	test.Tap(settingsButton(t, v, "Close"))
@@ -162,20 +199,19 @@ func (b *countedLocationBackend) RelayZones(ctx context.Context, project, client
 	return b.snapshotBackend.RelayZones(ctx, project, clientID)
 }
 
-func (b *countedLocationBackend) FastestRelayZone(ctx context.Context, zones []string) (string, error) {
+func (b *countedLocationBackend) MeasureRelayZones(ctx context.Context, zones []string) (map[string]time.Duration, error) {
 	b.probes++
-	return b.snapshotBackend.FastestRelayZone(ctx, zones)
+	return b.snapshotBackend.MeasureRelayZones(ctx, zones)
 }
 
 func checkAutoSelect(t *testing.T, v *view) {
 	t.Helper()
 	zone := locationPicker(t, v)
-	if zone.Selected != "northamerica-northeast2-a" {
+	if zone.Selected != "northamerica-northeast2-a   91 ms" {
 		t.Fatalf("saved zone reopened as %q", zone.Selected)
 	}
 	test.Tap(settingsButton(t, v, "Auto-select"))
-	waitForAction(t, v)
-	if zone.Selected != "europe-west2-a" {
+	if zone.Selected != "europe-west2-a   28 ms" {
 		t.Errorf("Auto-select picked %q, want europe-west2-a", zone.Selected)
 	}
 }
@@ -223,14 +259,13 @@ func TestBlockedClientKeepsCleanupError(t *testing.T) {
 func TestRelayLocationKeepsSavedZone(t *testing.T) {
 	test.NewTempApp(t)
 	saved := "asia-northeast1-b"
-	picker := &widget.Select{Options: []string{saved}, PlaceHolder: "Choose a zone"}
-	picker.SetSelected(saved)
-	setLocationOptions(picker, []string{saved, "southamerica-east1-b"})
-	if picker.Selected != saved {
-		t.Errorf("saved location %q reopened as %q", saved, picker.Selected)
+	picker := newZonePicker(saved)
+	picker.setOptions([]string{saved, "southamerica-east1-b"}, map[string]time.Duration{saved: 103 * time.Millisecond})
+	if picker.selected() != saved || picker.selectBox.Selected != saved+"   103 ms" {
+		t.Errorf("saved location %q reopened as %q", saved, picker.selectBox.Selected)
 	}
-	setLocationOptions(picker, []string{"europe-west2-a"})
-	if picker.Selected != "" {
-		t.Errorf("previous location %q survived a project change", picker.Selected)
+	picker.setOptions([]string{"europe-west2-a"}, nil)
+	if picker.selected() != "" {
+		t.Errorf("previous location %q survived a project change", picker.selected())
 	}
 }

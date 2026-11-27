@@ -28,7 +28,7 @@ type backend interface {
 	SaveConfig(relay.Config) error
 	LogIn(context.Context, string) error
 	RelayZones(context.Context, string, string) ([]string, error)
-	FastestRelayZone(context.Context, []string) (string, error)
+	MeasureRelayZones(context.Context, []string) (map[string]time.Duration, error)
 	Start(context.Context, bool) error
 	Extend(context.Context) error
 	Stop(context.Context) error
@@ -42,6 +42,7 @@ type view struct {
 	busy    bool
 	closing bool
 	problem string
+	copied  string
 
 	cancelAction context.CancelFunc
 	actionDone   chan struct{}
@@ -55,6 +56,7 @@ type view struct {
 	copy     *widget.Button
 	udp      *widget.Label
 	expiry   *widget.Label
+	details  *fyne.Container
 	error    *widget.Label
 	replace  *widget.Check
 	start    *widget.Button
@@ -116,20 +118,21 @@ func newView(window fyne.Window, service backend, icon fyne.Resource) *view {
 	v.address = widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
 	v.address.SizeName = theme.SizeNameHeadingText
 	v.address.Wrapping = fyne.TextWrapBreak
-	v.copy = widget.NewButtonWithIcon("", theme.ContentCopyIcon(), func() {
-		window.Clipboard().SetContent(v.state.Config.Domain)
-		v.copy.SetIcon(theme.ConfirmIcon())
+	v.copy = widget.NewButtonWithIcon(locale.T("Copy"), theme.ContentCopyIcon(), func() {
+		address := v.state.Config.Domain
+		window.Clipboard().SetContent(address)
+		v.copied = address
+		v.render()
 	})
 	v.udp = widget.NewLabel("")
 	v.expiry = widget.NewLabel("")
 	metrics := container.NewGridWithColumns(3,
 		metric("TCP", widget.NewLabel("25565")), metric("UDP", v.udp), metric(locale.T("Expires"), v.expiry),
 	)
+	v.details = container.NewVBox(widget.NewSeparator(), metrics)
 	address := container.NewBorder(nil, nil, nil, container.NewCenter(v.copy), v.address)
 	card := canvas.NewRectangle(theme.Color(theme.ColorNameInputBackground))
 	card.CornerRadius = 16
-	cardContent := container.NewVBox(v.status, address, widget.NewSeparator(), metrics)
-	body := container.NewStack(card, container.New(layout.NewCustomPaddedLayout(16, 16, 20, 20), cardContent))
 
 	v.error = widget.NewLabel("")
 	v.error.Importance = widget.DangerImportance
@@ -137,6 +140,10 @@ func newView(window fyne.Window, service backend, icon fyne.Resource) *view {
 
 	v.replace = widget.NewCheck(locale.T("Replace existing DNS records"), nil)
 	v.start = widget.NewButtonWithIcon(locale.T("Start"), theme.MediaPlayIcon(), func() {
+		if !v.readyToStart() {
+			v.openSettings()
+			return
+		}
 		replace := v.replace.Checked
 		v.replace.SetChecked(false)
 		v.run(func(ctx context.Context) error { return service.Start(ctx, replace) }, nil)
@@ -145,7 +152,10 @@ func newView(window fyne.Window, service backend, icon fyne.Resource) *view {
 	v.extend = widget.NewButtonWithIcon(locale.T("Extend 4 h"), theme.HistoryIcon(), func() { v.run(service.Extend, nil) })
 	v.stop = widget.NewButtonWithIcon(locale.T("Stop"), theme.MediaStopIcon(), func() { v.run(service.Stop, nil) })
 	actions := container.NewHBox(layout.NewSpacer(), v.start, v.extend, v.stop)
-	content := container.New(layout.NewCustomPaddedVBoxLayout(14), header, body, v.error, v.replace, actions)
+	cardContent := container.NewVBox(v.status, address, v.details,
+		widget.NewSeparator(), v.error, v.replace, actions)
+	body := container.NewStack(card, container.New(layout.NewCustomPaddedLayout(16, 20, 20, 20), cardContent))
+	content := container.New(layout.NewCustomPaddedVBoxLayout(16), header, body)
 	window.SetContent(container.New(layout.NewCustomPaddedLayout(18, 18, 16, 16), container.NewVScroll(content)))
 	v.state = service.GetState()
 	v.render()
@@ -156,7 +166,7 @@ func newView(window fyne.Window, service backend, icon fyne.Resource) *view {
 func metric(name string, value *widget.Label) fyne.CanvasObject {
 	label := widget.NewLabel(name)
 	label.TextStyle.Bold = true
-	return container.NewVBox(label, value)
+	return container.New(layout.NewCustomPaddedVBoxLayout(0), label, value)
 }
 
 func (v *view) selectProfile(label string) {
@@ -167,7 +177,8 @@ func (v *view) selectProfile(label string) {
 	id := v.state.Profiles[i].ID
 	v.run(func(context.Context) error { return v.service.SelectProfile(id) }, func() {
 		v.replace.SetChecked(false)
-		v.copy.SetIcon(theme.ContentCopyIcon())
+		v.copied = ""
+		v.render()
 	})
 }
 
@@ -183,11 +194,16 @@ func (v *view) refresh() {
 	v.render()
 }
 
+func (v *view) readyToStart() bool {
+	state := v.state
+	return state.Config.Domain != "" && state.Config.Zone != "" && state.GoogleReady && state.CloudflareReady
+}
+
 func (v *view) render() {
 	v.renderProfiles()
 	phase := v.state.Phase
 	locked := v.busy || v.closing || phase == "starting" || phase == "stopping"
-	ready := v.state.Config.Domain != "" && v.state.Config.Zone != "" && v.state.GoogleReady && v.state.CloudflareReady
+	ready := v.readyToStart()
 	setEnabled(v.profiles, !v.busy && !v.closing)
 	setEnabled(v.add, !v.busy && !v.closing)
 	setEnabled(v.settings, !locked)
@@ -206,8 +222,21 @@ func (v *view) render() {
 		v.status.Importance = widget.MediumImportance
 	}
 	v.status.Refresh()
-	v.address.SetText(orDash(v.state.Config.Domain))
-	setVisible(v.copy, v.state.Config.Domain != "")
+	address := v.state.Config.Domain
+	hasAddress := address != ""
+	setVisible(v.status, hasAddress || v.closing)
+	setVisible(v.details, hasAddress)
+	setVisible(v.copy, hasAddress)
+	if !hasAddress {
+		address = locale.T("New relay")
+	}
+	v.address.SetText(address)
+	copyLabel, copyIcon := "Copy", theme.ContentCopyIcon()
+	if hasAddress && v.copied == address {
+		copyLabel, copyIcon = "Copied", theme.ConfirmIcon()
+	}
+	v.copy.SetText(locale.T(copyLabel))
+	v.copy.SetIcon(copyIcon)
 	udp := ""
 	if v.state.Config.UDPPort != 0 {
 		udp = strconv.Itoa(v.state.Config.UDPPort)
@@ -219,16 +248,23 @@ func (v *view) render() {
 	}
 	v.expiry.SetText(orDash(expiry))
 
-	startLabel := locale.T("Start")
+	startLabel := "Start"
+	startIcon := theme.MediaPlayIcon()
 	if phase == "recoverable" {
-		startLabel = locale.T("Reconnect")
+		startLabel = "Reconnect"
 	}
-	v.start.SetText(startLabel)
-	setVisible(v.start, phase != "running")
-	setEnabled(v.start, ready && !locked)
+	if !ready && !locked {
+		startLabel = "Set up relay"
+		startIcon = theme.SettingsIcon()
+	}
+	v.start.SetText(locale.T(startLabel))
+	v.start.SetIcon(startIcon)
+	setVisible(v.start, phase == "idle" || phase == "recoverable")
+	setEnabled(v.start, !locked)
 	setVisible(v.extend, phase == "running")
 	setEnabled(v.extend, !locked)
-	setEnabled(v.stop, !locked && (phase == "running" || phase == "recoverable"))
+	setVisible(v.stop, phase == "running" || phase == "recoverable")
+	setEnabled(v.stop, !locked)
 	setVisible(v.replace, ready && phase == "idle")
 	setEnabled(v.replace, !locked)
 

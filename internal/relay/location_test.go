@@ -53,11 +53,11 @@ func TestRelayZonesListsMatchingZonesAcrossPages(t *testing.T) {
 	}
 }
 
-func TestFastestRelayZoneProbesEachRegionOnce(t *testing.T) {
+func TestMeasureRelayZonesProbesEachRegionOnce(t *testing.T) {
 	zones := []string{"us-central1-f", "europe-west2-c", "europe-west2-b", "asia-northeast1-a"}
 	delays := map[string]time.Duration{"us-central1": 70 * time.Millisecond, "europe-west2": 30 * time.Millisecond}
 	var seen sync.Map
-	got, err := fastestRelayZone(context.Background(), zones, func(_ context.Context, region string) (time.Duration, error) {
+	got, err := measureRelayZones(context.Background(), zones, func(_ context.Context, region string) (time.Duration, error) {
 		if _, duplicate := seen.LoadOrStore(region, true); duplicate {
 			t.Errorf("probed %s twice", region)
 		}
@@ -66,18 +66,19 @@ func TestFastestRelayZoneProbesEachRegionOnce(t *testing.T) {
 		}
 		return 0, errors.New("unreachable")
 	})
-	if err != nil || got != "europe-west2-b" {
-		t.Fatalf("fastestRelayZone() = %q, %v, want europe-west2-b", got, err)
+	if err != nil || len(got) != 3 || got["europe-west2-b"] != delays["europe-west2"] ||
+		got["europe-west2-c"] != delays["europe-west2"] || got["us-central1-f"] != delays["us-central1"] {
+		t.Fatalf("measureRelayZones() = %v, %v", got, err)
 	}
 }
 
-func TestFastestRelayZoneFailsWhenNoRegionResponds(t *testing.T) {
+func TestMeasureRelayZonesFailsWhenNoRegionResponds(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	zone, err := fastestRelayZone(ctx, []string{"us-central1-f"}, func(ctx context.Context, _ string) (time.Duration, error) {
+	latencies, err := measureRelayZones(ctx, []string{"us-central1-f"}, func(ctx context.Context, _ string) (time.Duration, error) {
 		return 0, ctx.Err()
 	})
-	if zone != "" || err == nil {
-		t.Fatalf("fastestRelayZone() = %q, %v, want no zone and an error", zone, err)
+	if len(latencies) != 0 || err == nil {
+		t.Fatalf("measureRelayZones() = %v, %v, want no measurements and an error", latencies, err)
 	}
 }

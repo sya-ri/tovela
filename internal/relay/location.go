@@ -81,48 +81,49 @@ func (c compute) relayZones(ctx context.Context) ([]string, error) {
 	return zones, nil
 }
 
-// FastestRelayZone estimates latency from this computer using regional Google endpoints.
-func (d *Desktop) FastestRelayZone(ctx context.Context, zones []string) (string, error) {
+// MeasureRelayZones estimates latency from this computer using regional Google endpoints.
+func (d *Desktop) MeasureRelayZones(ctx context.Context, zones []string) (map[string]time.Duration, error) {
 	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
 	defer cancel()
-	return fastestRelayZone(ctx, zones, probeRegion)
+	return measureRelayZones(ctx, zones, probeRegion)
 }
 
-func fastestRelayZone(ctx context.Context, zones []string, probe func(context.Context, string) (time.Duration, error)) (string, error) {
-	candidates := make(map[string]string)
+func measureRelayZones(ctx context.Context, zones []string, probe func(context.Context, string) (time.Duration, error)) (map[string]time.Duration, error) {
+	regions := make(map[string][]string)
 	for _, zone := range zones {
-		if !validZone(zone) {
-			continue
-		}
-		region := zone[:len(zone)-2]
-		if previous := candidates[region]; previous == "" || zone < previous {
-			candidates[region] = zone
+		if validZone(zone) {
+			region := zone[:len(zone)-2]
+			regions[region] = append(regions[region], zone)
 		}
 	}
+
 	type measurement struct {
-		zone     string
+		region   string
 		duration time.Duration
-		err      error
 	}
-	results := make(chan measurement, len(candidates))
-	for region, zone := range candidates {
+	results := make(chan measurement, len(regions))
+	for region := range regions {
 		go func() {
 			duration, err := probe(ctx, region)
-			results <- measurement{zone, duration, err}
+			if err != nil {
+				duration = 0
+			}
+			results <- measurement{region, duration}
 		}()
 	}
-	var best measurement
-	for range candidates {
+	latencies := make(map[string]time.Duration, len(zones))
+	for range regions {
 		result := <-results
-		if result.err == nil && (best.zone == "" || result.duration < best.duration ||
-			(result.duration == best.duration && result.zone < best.zone)) {
-			best = result
+		if result.duration > 0 {
+			for _, zone := range regions[result.region] {
+				latencies[zone] = result.duration
+			}
 		}
 	}
-	if best.zone == "" {
-		return "", errors.New(locale.T("Could not measure latency to Google Cloud. Choose a zone from the list."))
+	if len(latencies) == 0 {
+		return nil, errors.New(locale.T("Could not measure latency to Google Cloud. Choose a zone from the list."))
 	}
-	return best.zone, nil
+	return latencies, nil
 }
 
 func probeRegion(ctx context.Context, region string) (time.Duration, error) {
