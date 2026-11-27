@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/theme"
@@ -103,7 +104,7 @@ func TestRelayScreens(t *testing.T) {
 		{name: "settings-ja", locale: "ja-JP", phase: "idle"},
 		{name: "settings-default-ports", phase: "idle"},
 		{name: "settings-narrow-ja", locale: "ja-JP", phase: "idle", narrow: true},
-		{name: "settings-bottom-ja", locale: "ja-JP", phase: "idle"},
+		{name: "settings-bottom-ja", locale: "ja-JP", phase: "idle", narrow: true},
 		{name: "frpc-blocked-ja", locale: "ja-JP", phase: "idle"},
 		{name: "dns-conflict-ja", locale: "ja-JP", phase: "idle"},
 	} {
@@ -124,9 +125,6 @@ func TestRelayScreens(t *testing.T) {
 			if screen.narrow {
 				size = fyne.NewSize(500, 410)
 			}
-			if screen.name == "settings-bottom-ja" {
-				size.Height = 580
-			}
 			window.Resize(size)
 			config := relay.DefaultConfig("google-client", "cloudflare-client")
 			config.Domain, config.Project, config.Zone = "play.example.com", "example-project", "northamerica-northeast2-a"
@@ -141,6 +139,9 @@ func TestRelayScreens(t *testing.T) {
 					Config: config, Phase: screen.phase, Problem: screen.problem,
 					GoogleReady: true, CloudflareReady: true,
 				},
+			}
+			if screen.name == "settings-bottom-ja" {
+				state.CloudflareReady = false
 			}
 			if screen.name == "setup" {
 				state.Config = relay.DefaultConfig("", "")
@@ -262,23 +263,42 @@ func checkSettingsScroll(t *testing.T, v *view) {
 	t.Helper()
 	var settings *container.Scroll
 	var signIn []*widget.Button
+	var marks []*canvas.Image
 	for _, object := range test.LaidOutObjects(v.window.Canvas().Overlays().Top()) {
 		switch control := object.(type) {
 		case *container.Scroll:
 			if settings == nil && control.Direction == container.ScrollVerticalOnly {
 				settings = control
 			}
+		case *canvas.Image:
+			if control.Resource == googleIcon || control.Resource == cloudflareIcon {
+				marks = append(marks, control)
+			}
 		case *widget.Button:
-			if control.Icon == googleIcon || control.Icon == cloudflareIcon {
+			switch control.Text {
+			case locale.T("Connected"):
+				if control.Icon != theme.ConfirmIcon() {
+					t.Error("The connected account button needs a check mark.")
+				}
+				signIn = append(signIn, control)
+			case locale.T("Sign in"):
+				if control.Icon != theme.LoginIcon() {
+					t.Error("The sign-in button needs the login icon.")
+				}
 				signIn = append(signIn, control)
 			}
 		}
 	}
-	if settings == nil || len(signIn) != 2 {
+	if settings == nil || len(signIn) != 2 || len(marks) != 2 {
 		t.Fatal("The scrollable settings or account rows are unavailable.")
 	}
 
 	driver := fyne.CurrentApp().Driver()
+	for i, mark := range marks {
+		if driver.AbsolutePositionForObject(mark).X >= driver.AbsolutePositionForObject(signIn[i]).X {
+			t.Errorf("The provider mark is outside the label column.")
+		}
+	}
 	buttons := append(signIn, settingsButton(t, v, locale.T("Save")))
 	positions := make([]float32, len(buttons))
 	for i, button := range buttons {

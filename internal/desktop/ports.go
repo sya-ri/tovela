@@ -49,8 +49,8 @@ func (e *portEditor) addRow(port relay.PortMapping) {
 		label = "Minecraft"
 	}
 	protocol.SetSelected(label)
-	local := entry(portText(port.LocalPort), "")
-	public := entry(portText(port.PublicPort), portText(port.LocalPort))
+	local := numberEntry(portText(port.LocalPort), "")
+	public := numberEntry(portText(port.PublicPort), portText(port.LocalPort))
 	local.OnChanged = func(value string) { public.SetPlaceHolder(value) }
 	row := &portFields{protocol: protocol, local: local, public: public}
 	row.remove = widget.NewButtonWithIcon("", theme.DeleteIcon(), func() {

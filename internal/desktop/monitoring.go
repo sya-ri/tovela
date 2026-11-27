@@ -54,9 +54,9 @@ func relayLoadPanel(machineType string) (fyne.CanvasObject, func(relay.Load, err
 	status := widget.NewLabel(locale.T("Loading…"))
 	status.Wrapping = fyne.TextWrapWord
 	content := container.NewVBox(settingsForm(
-		settingRow{"Machine type", widget.NewLabel(machineType)},
-		settingRow{"CPU", cpu},
-		settingRow{"Memory", memory},
+		settingRow{label: "Machine type", control: widget.NewLabel(machineType)},
+		settingRow{label: "CPU", control: cpu},
+		settingRow{label: "Memory", control: memory},
 	), status)
 	update := func(load relay.Load, err error) {
 		if load.CPUFraction != nil {
