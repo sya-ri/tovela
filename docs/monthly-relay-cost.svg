@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="850" height="318" viewBox="0 0 850 318" role="img" aria-labelledby="title desc">
   <title id="title">Monthly relay costs by hours online</title>
-  <desc id="desc">Hourly estimates for Tovela in Iowa and for Localtonet. Monthly base prices are $3 for Playit Premium and Pinggy Pro, $8 for LocalXpose Pro billed annually, and $10 for ngrok Hobbyist. Tovela reaches $3 at about 215 hours in Iowa.</desc>
+  <desc id="desc">Hourly estimates for Tovela in Iowa and for Localtonet. Monthly base prices are $3 for Playit Premium and Pinggy Pro, $8 for LocalXpose Pro billed annually, and $10 for ngrok Hobbyist.</desc>
   <rect x="0.5" y="0.5" width="849" height="317" rx="12" fill="#fff" stroke="#d0d7de"/>
   <g font-family="system-ui, sans-serif" fill="#24292f">
     <path d="M58 276H553 M58 234H553 M58 192H553 M58 150H553 M58 108H553 M58 66H553 M58 24H553" stroke="#d8dee4" fill="none"/>
@@ -30,15 +30,12 @@
       <path d="M58 276L553 65.53" stroke="#087763"/>
       <path d="M58 276L553 233.66" stroke="#8250df"/>
     </g>
-    <path d="M206.17 213V276" stroke="#8c959f" stroke-dasharray="3 3"/>
-    <circle cx="206.17" cy="213" r="3.7" fill="#fff" stroke="#087763" stroke-width="2"/>
     <g fill="none" stroke-width="1">
       <path d="M553 66L580 53" stroke="#a27a51"/>
       <path d="M553 108H580" stroke="#a27a51"/>
       <path d="M553 213H580" stroke="#a27a51"/>
       <path d="M553 65.53L580 81" stroke="#087763"/>
       <path d="M553 233.66L580 243" stroke="#8250df"/>
-      <path d="M206.17 213L220 200" stroke="#8c959f"/>
     </g>
     <g font-size="14" font-weight="600">
       <text x="588" y="57" fill="#704416">ngrok Hobbyist ($10)</text>
@@ -46,7 +43,6 @@
       <text x="588" y="112" fill="#704416">LocalXpose Pro ($8, billed yearly)</text>
       <text x="588" y="217" fill="#704416">Playit Premium / Pinggy Pro ($3)</text>
       <text x="588" y="247" fill="#8250df">Localtonet Pay-as-you-go</text>
-      <text x="224" y="196" text-anchor="middle" fill="#076755">≈215 h</text>
     </g>
   </g>
 </svg>
