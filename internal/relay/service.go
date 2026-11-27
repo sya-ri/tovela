@@ -41,7 +41,7 @@ func newService(path string, defaults Config) (*Service, error) {
 	}
 	s := &Service{configPath: path, state: State{Config: config, Phase: "idle"}}
 	s.refreshLogins()
-	if config.validate() == nil {
+	if config.validateRelay() == nil {
 		var session identity
 		if err := readCredential(config.sessionKey(), &session); err == nil {
 			s.state.Phase = "recoverable"
@@ -135,7 +135,7 @@ func (s *Service) Start(ctx context.Context, replaceDNS bool) (err error) {
 		return nil
 	}
 	config := state.Config
-	if err := config.validate(); err != nil {
+	if err := config.validateRelay(); err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
@@ -231,6 +231,9 @@ func (s *Service) Start(ctx context.Context, replaceDNS bool) (err error) {
 	}
 	if vm == nil {
 		if !pending {
+			if err := gce.checkMachineType(ctx); err != nil {
+				return err
+			}
 			session, err = newIdentity(config)
 			if err != nil {
 				return err

@@ -1,24 +1,26 @@
 # Design
 
-Tovela runs one relay VM per hostname. Each profile has its own local ports and session expiry, so profiles can run at the same time. The operator keeps the Minecraft servers and worlds on their own computer.
+Tovela runs one relay VM per hostname. Each profile has its own Google Cloud zone, local ports, and session expiry, so profiles can run at the same time. The operator keeps the Minecraft servers and worlds on their own computer.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    Player["Minecraft / UDP client"] -->|"TCP 25565 / configured UDP port"| VM["Tokyo VM (frps)"]
+    Player["Minecraft / UDP client"] -->|"TCP 25565 / configured UDP port"| VM["Relay VM (frps)"]
     VM <-->|"TLS control and work connections"| Local["Operator's computer (Tovela and frpc)"]
     Local -->|"Create, inspect, delete"| GCE["Compute Engine API"]
     Local -->|"Update the A record"| DNS["Cloudflare DNS API"]
     Local <-->|"Local TCP / UDP"| Server["Minecraft / UDP service"]
 ```
 
-The Go app uses Fyne for its desktop UI and bundles `frpc`. Each profile shows its hostname, expiry, and relay controls. The app finds the Cloudflare zone matching the hostname unless the operator selects a zone.
+The desktop app loads zones that offer the relay machine type in the selected Google Cloud project. When the profile has no saved zone, it selects a zone in the region with the shortest measured connection time from the host computer. **Auto-select** reapplies the recommendation after a manual choice. The app reuses the zone list and recommendation until it closes or the operator signs in to Google again. It measures connections to [regional Google Cloud Storage endpoints](https://docs.cloud.google.com/storage/docs/regional-endpoints). Players may get a better connection from a different zone.
+
+The app finds the Cloudflare zone matching the hostname unless the operator selects one.
 
 ## Relay lifecycle
 
 1. Check that the local server returns a Minecraft Java status response.
-2. Look up a deterministic VM name derived from the hostname. Reuse a matching session only when its ownership labels agree. Use the same `requestId` for creation retries. Look up the VM again on a name conflict. Give each new VM an ephemeral IPv4 address, a deletion deadline, and an auto-deleting boot disk.
+2. Look up a deterministic VM name in the configured zone. Reuse a matching session only when its ownership labels agree. Check that the zone offers `e2-micro` before creating a relay. Use the same `requestId` for creation retries. Look up the VM again on a name conflict. Give each new VM an ephemeral IPv4 address, a deletion deadline, and an auto-deleting boot disk.
 3. Start the frp tunnel and verify the public Minecraft status response. Publish a DNS-only A record with a 60-second TTL. Ask the operator before replacing conflicting A, AAAA, CNAME, or Java SRV records.
 4. Extend a running relay by four hours by updating its GCE termination time. The app displays the expiry confirmed by GCE.
 5. On stop, remove the session's DNS record and delete its VM. Attempt VM deletion if DNS cleanup fails. After a forced app exit, GCE deletes the VM at expiry, and the next start or stop reconciles stale DNS.
@@ -33,7 +35,7 @@ The build bundles a pinned `frpc` for the target OS and CPU. The VM downloads an
 
 - Start the app and verify bundled `frpc` on Windows, macOS, and Linux. Snapshot the stopped, starting, online, and error screens.
 - Check concurrent starts, lost creation responses, and conflicts with a VM owned by another session.
-- Run two profiles. Extend one and stop the other independently.
+- Run two profiles in different zones. Extend one and stop the other independently.
 - Check public Java list ping, login, and UDP traffic. Verify VM and disk deletion on stop and expiry, and DNS reconciliation after a forced exit.
 
 ## References

@@ -21,19 +21,24 @@ func reply(code int, body string) (*http.Response, error) {
 }
 
 func TestCreateRetriesWithOneVMNameAndRequestID(t *testing.T) {
-	config := Config{Project: "test-project", Zone: "asia-northeast1-a", Network: "default", Domain: "mc.example.com"}
+	config := Config{Project: "test-project", Zone: "southamerica-east1-a", Network: "default", Domain: "mc.example.com"}
 	session := identity{RequestID: requestID(), Nonce: "same-session", Deadline: time.Now().UTC().Truncate(time.Second).Add(4 * time.Hour)}
 	calls := 0
 	client := &http.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
 		calls++
-		if r.Method != http.MethodPost || r.URL.Query().Get("requestId") != session.RequestID {
+		if r.Method != http.MethodPost || r.URL.Path != "/compute/v1/projects/test-project/zones/southamerica-east1-a/instances" ||
+			r.URL.Query().Get("requestId") != session.RequestID {
 			t.Fatalf("unexpected create request: %s %s", r.Method, r.URL)
 		}
 		var vm struct {
-			Name       string
-			Labels     map[string]string
-			Scheduling map[string]string
-			Disks      []struct{ AutoDelete bool }
+			Name        string
+			MachineType string
+			Labels      map[string]string
+			Scheduling  map[string]string
+			Disks       []struct {
+				AutoDelete       bool
+				InitializeParams struct{ DiskType string }
+			}
 		}
 		if err := json.NewDecoder(r.Body).Decode(&vm); err != nil {
 			t.Fatal(err)
@@ -41,7 +46,9 @@ func TestCreateRetriesWithOneVMNameAndRequestID(t *testing.T) {
 		if vm.Name != config.name() || vm.Labels["session"] != session.Nonce ||
 			vm.Scheduling["instanceTerminationAction"] != "DELETE" ||
 			vm.Scheduling["terminationTime"] != session.Deadline.Format(time.RFC3339) ||
-			len(vm.Disks) != 1 || !vm.Disks[0].AutoDelete {
+			vm.MachineType != "zones/southamerica-east1-a/machineTypes/e2-micro" ||
+			len(vm.Disks) != 1 || !vm.Disks[0].AutoDelete ||
+			vm.Disks[0].InitializeParams.DiskType != "zones/southamerica-east1-a/diskTypes/pd-standard" {
 			t.Fatalf("incorrect VM identity or cleanup configuration: %+v", vm)
 		}
 		if calls == 1 {
@@ -54,6 +61,32 @@ func TestCreateRetriesWithOneVMNameAndRequestID(t *testing.T) {
 	}
 	if calls != 2 {
 		t.Fatalf("sent %d requests, want 2", calls)
+	}
+}
+
+func TestCheckMachineTypeUsesSelectedZone(t *testing.T) {
+	for name, status := range map[string]int{
+		"available":    http.StatusOK,
+		"missing":      http.StatusNotFound,
+		"unauthorized": http.StatusForbidden,
+	} {
+		t.Run(name, func(t *testing.T) {
+			config := Config{Project: "test-project", Zone: "europe-west2-a"}
+			client := &http.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
+				if r.Method != http.MethodGet || r.URL.Path != "/compute/v1/projects/test-project/zones/europe-west2-a/machineTypes/e2-micro" {
+					t.Fatalf("unexpected machine type request: %s %s", r.Method, r.URL)
+				}
+				return reply(status, `{}`)
+			})}
+			err := (compute{client, config}).checkMachineType(t.Context())
+			if status == http.StatusOK {
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), config.Zone) {
+				t.Fatalf("machine type check error = %v", err)
+			}
+		})
 	}
 }
 

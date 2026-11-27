@@ -18,7 +18,7 @@ const credentialService = "tovela"
 
 var (
 	projectPattern  = regexp.MustCompile("^[a-z][a-z0-9-]{4,28}[a-z0-9]$")
-	zonePattern     = regexp.MustCompile("^asia-northeast1-[abc]$")
+	zonePattern     = regexp.MustCompile("^(?:[a-z][a-z0-9]*-)+[a-z][a-z0-9]*[0-9]-[a-z]$")
 	resourcePattern = regexp.MustCompile("^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$")
 	domainPattern   = regexp.MustCompile("^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 )
@@ -37,20 +37,24 @@ type Config struct {
 }
 
 func DefaultConfig(googleID, cloudflareID string) Config {
-	return Config{Zone: "asia-northeast1-a", Network: "default", TCPPort: 25565, Hours: 4, GoogleClientID: googleID, CloudflareClientID: cloudflareID}
+	return Config{Network: "default", TCPPort: 25565, Hours: 4, GoogleClientID: googleID, CloudflareClientID: cloudflareID}
 }
 
 func (c *Config) normalize() {
 	c.Domain = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(c.Domain)), ".")
 	c.CloudflareZone = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(c.CloudflareZone)), ".")
 	c.Project = strings.TrimSpace(c.Project)
+	c.Zone = strings.ToLower(strings.TrimSpace(c.Zone))
 	c.GoogleClientID = strings.TrimSpace(c.GoogleClientID)
 	c.CloudflareClientID = strings.TrimSpace(c.CloudflareClientID)
 }
 
 func (c Config) validate() error {
-	if !projectPattern.MatchString(c.Project) || !zonePattern.MatchString(c.Zone) || !resourcePattern.MatchString(c.Network) {
-		return errors.New(locale.T("Enter a valid Google Cloud project ID, Tokyo zone, and VPC network name."))
+	if !projectPattern.MatchString(c.Project) || !resourcePattern.MatchString(c.Network) {
+		return errors.New(locale.T("Enter a valid Google Cloud project ID and VPC network name."))
+	}
+	if c.Zone != "" && !validZone(c.Zone) {
+		return errors.New(locale.T("Choose a valid Google Cloud zone."))
 	}
 	if len(c.Domain) > 253 || !domainPattern.MatchString(c.Domain) {
 		return errors.New(locale.T("Enter a valid hostname."))
@@ -63,6 +67,13 @@ func (c Config) validate() error {
 		return errors.New(locale.T("Check the port numbers and duration."))
 	}
 	return nil
+}
+
+func (c Config) validateRelay() error {
+	if c.Zone == "" {
+		return errors.New(locale.T("Choose a relay zone."))
+	}
+	return c.validate()
 }
 
 func (c Config) name() string {

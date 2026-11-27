@@ -1,0 +1,83 @@
+package relay
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"slices"
+	"sync"
+	"testing"
+	"time"
+)
+
+func TestRelayZonesListsMatchingZonesAcrossPages(t *testing.T) {
+	calls := 0
+	client := &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if req.Method != http.MethodGet || req.URL.Path != "/compute/v1/projects/example-project/aggregated/machineTypes" {
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
+		}
+		query := req.URL.Query()
+		if query.Get("filter") != `name = "e2-micro"` || query.Get("returnPartialSuccess") != "true" {
+			t.Fatalf("unexpected query: %s", query.Encode())
+		}
+		switch query.Get("pageToken") {
+		case "":
+			return reply(200, `{
+				"items": {
+					"zones/us-central1-f": {"machineTypes": [{"name": "e2-micro"}]},
+					"zones/us-central1-a": {"warning": {"code": "NO_RESULTS_ON_PAGE"}},
+					"zones/europe-west2-a": {"machineTypes": [{"name": "e2-small"}]},
+					"zones/invalid/zone": {"machineTypes": [{"name": "e2-micro"}]}
+				},
+				"nextPageToken": "second+page"
+			}`)
+		case "second+page":
+			return reply(200, `{
+				"items": {
+					"zones/us-central1-f": {"machineTypes": [{"name": "e2-micro"}]},
+					"zones/southamerica-east1-b": {"machineTypes": [{"name": "e2-micro"}]},
+					"zones/asia-northeast1-b": {"machineTypes": [{"name": "e2-micro"}]}
+				}
+			}`)
+		default:
+			t.Fatalf("unexpected page token: %q", query.Get("pageToken"))
+			return nil, nil
+		}
+	})}
+	gce := compute{client: client, config: Config{Project: "example-project"}}
+	got, err := gce.relayZones(context.Background())
+	want := []string{"asia-northeast1-b", "southamerica-east1-b", "us-central1-f"}
+	if err != nil || !slices.Equal(got, want) || calls != 2 {
+		t.Fatalf("relayZones() = %v, %v after %d calls, want %v after 2 calls", got, err, calls, want)
+	}
+}
+
+func TestFastestRelayZoneProbesEachRegionOnce(t *testing.T) {
+	zones := []string{"us-central1-f", "europe-west2-c", "europe-west2-b", "asia-northeast1-a"}
+	delays := map[string]time.Duration{"us-central1": 70 * time.Millisecond, "europe-west2": 30 * time.Millisecond}
+	var seen sync.Map
+	got, err := fastestRelayZone(context.Background(), zones, func(_ context.Context, region string) (time.Duration, error) {
+		if _, duplicate := seen.LoadOrStore(region, true); duplicate {
+			t.Errorf("probed %s twice", region)
+		}
+		if delay, ok := delays[region]; ok {
+			return delay, nil
+		}
+		return 0, errors.New("unreachable")
+	})
+	if err != nil || got != "europe-west2-b" {
+		t.Fatalf("fastestRelayZone() = %q, %v, want europe-west2-b", got, err)
+	}
+}
+
+func TestFastestRelayZoneFailsWhenNoRegionResponds(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	zone, err := fastestRelayZone(ctx, []string{"us-central1-f"}, func(ctx context.Context, _ string) (time.Duration, error) {
+		return 0, ctx.Err()
+	})
+	if zone != "" || err == nil {
+		t.Fatalf("fastestRelayZone() = %q, %v, want no zone and an error", zone, err)
+	}
+}

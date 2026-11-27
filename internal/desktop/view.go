@@ -27,6 +27,8 @@ type backend interface {
 	AddProfile() error
 	SaveConfig(relay.Config) error
 	LogIn(context.Context, string) error
+	RelayZones(context.Context, string, string) ([]string, error)
+	FastestRelayZone(context.Context, []string) (string, error)
 	Start(context.Context, bool) error
 	Extend(context.Context) error
 	Stop(context.Context) error
@@ -60,6 +62,7 @@ type view struct {
 	stop     *widget.Button
 
 	settingsChanged func()
+	locations       map[locationKey]locationChoices
 }
 
 var phaseLabels = map[string]string{
@@ -95,7 +98,7 @@ func Run(app fyne.App, window fyne.Window, service *relay.Desktop) {
 }
 
 func newView(window fyne.Window, service backend, icon fyne.Resource) *view {
-	v := &view{window: window, service: service}
+	v := &view{window: window, service: service, locations: make(map[locationKey]locationChoices)}
 	logo := canvas.NewImageFromResource(icon)
 	logo.FillMode = canvas.ImageFillContain
 	logo.SetMinSize(fyne.NewSize(36, 36))
@@ -184,7 +187,7 @@ func (v *view) render() {
 	v.renderProfiles()
 	phase := v.state.Phase
 	locked := v.busy || v.closing || phase == "starting" || phase == "stopping"
-	ready := v.state.Config.Domain != "" && v.state.GoogleReady && v.state.CloudflareReady
+	ready := v.state.Config.Domain != "" && v.state.Config.Zone != "" && v.state.GoogleReady && v.state.CloudflareReady
 	setEnabled(v.profiles, !v.busy && !v.closing)
 	setEnabled(v.add, !v.busy && !v.closing)
 	setEnabled(v.settings, !locked)
