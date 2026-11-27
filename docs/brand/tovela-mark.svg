@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
   <title id="title">Tovela mark</title>
-  <rect width="64" height="64" rx="15" fill="#26463d"/>
-  <path fill="#edf3d5" d="M12 17H24C27 17 30 19 32 22C34 19 37 17 40 17H52V26H41C38.8 26 37 27.8 37 30V45L32 50L27 45V30C27 27.8 25.2 26 23 26H12Z"/>
-  <path fill="#a6cfa3" d="M43 17H52V26H43Z"/>
+  <rect width="64" height="64" rx="15" fill="#373657"/>
+  <path fill="#ebe6ff" d="M12 17H24C27 17 30 19 32 22C34 19 37 17 40 17H52V26H41C38.8 26 37 27.8 37 30V45L32 50L27 45V30C27 27.8 25.2 26 23 26H12Z"/>
+  <path fill="#a8a8e6" d="M43 17H52V26H43Z"/>
 </svg>
