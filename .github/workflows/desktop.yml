@@ -1,0 +1,71 @@
+name: Desktop
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows
+            runner: windows-latest
+          - platform: macos
+            runner: macos-15
+          - platform: linux
+            runner: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6.1.0
+      - uses: actions/setup-go@v6.5.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v6.5.0
+        with:
+          node-version: '24.20.0'
+      - run: npm install -g pnpm@12.23.0
+      - if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
+      - run: pnpm --dir frontend install --frozen-lockfile
+      - run: pnpm --dir frontend build
+      - run: node scripts/bundle-frp.mjs
+      - if: matrix.platform == 'windows'
+        run: ./internal/relay/bin/frpc.exe --version
+      - if: matrix.platform != 'windows'
+        run: ./internal/relay/bin/frpc --version
+      - shell: pwsh
+        run: Copy-Item LICENSE build/tovela-LICENSE
+      - run: go test ./...
+      - if: matrix.platform == 'linux'
+        run: |
+          pnpm --dir frontend exec playwright install --with-deps chromium
+          pnpm --dir frontend test
+      - if: matrix.platform == 'windows'
+        run: go build -trimpath -tags production -ldflags=-H=windowsgui -o build/Tovela.exe .
+      - if: matrix.platform == 'linux'
+        run: go build -trimpath -tags production -o build/tovela .
+      - if: matrix.platform == 'macos'
+        run: |
+          app='build/Tovela.app/Contents'
+          mkdir -p "$app/MacOS"
+          cp scripts/macos-info.plist "$app/Info.plist"
+          go build -trimpath -tags production -o "$app/MacOS/Tovela" .
+      - if: matrix.platform != 'windows'
+        run: tar -czf "tovela-${{ matrix.platform }}.tar.gz" -C build .
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: tovela-${{ matrix.platform }}
+          path: |
+            tovela-${{ matrix.platform }}.tar.gz
+            build/*.exe
+            build/frp-LICENSE
+            build/tovela-LICENSE
+          if-no-files-found: error
