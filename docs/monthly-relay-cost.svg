@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="850" height="318" viewBox="0 0 850 318" role="img" aria-labelledby="title desc">
   <title id="title">Monthly relay costs by hours online</title>
-  <desc id="desc">Hourly estimates for Tovela in Tokyo and Iowa and for Localtonet. Monthly base prices are $3 for Playit Premium and Pinggy Pro, $8 for LocalXpose Pro billed annually, $10 for ngrok Hobbyist, $25 for Cloudflare Spectrum Pro plus transfer and TCPShield Pro, and $100 for TCPShield Premium. Tovela reaches $3 at about 182 hours in Tokyo and 215 hours in Iowa.</desc>
+  <desc id="desc">Hourly estimates for Tovela in Iowa and for Localtonet. Monthly base prices are $3 for Playit Premium and Pinggy Pro, $8 for LocalXpose Pro billed annually, $10 for ngrok Hobbyist, $25 for Cloudflare Spectrum Pro plus transfer and TCPShield Pro, and $100 for TCPShield Premium. Tovela reaches $3 at about 215 hours in Iowa.</desc>
   <rect x="0.5" y="0.5" width="849" height="317" rx="12" fill="#fff" stroke="#d0d7de"/>
   <g font-family="system-ui, sans-serif" fill="#24292f">
     <text x="827" y="25" text-anchor="end" font-size="14" fill="#57606a">TCPShield Premium ($100/mo, above scale)</text>
@@ -28,15 +28,12 @@
       <path d="M58 249.00H553"/>
     </g>
     <g stroke-width="2.8" fill="none">
-      <path d="M58 276L553 169.14" stroke="#0969da"/>
       <path d="M58 276L553 185.80" stroke="#087763"/>
       <path d="M58 276L553 257.86" stroke="#8250df"/>
     </g>
     <g stroke="#8c959f" stroke-dasharray="3 3">
-      <path d="M183.08 249.00V276"/>
       <path d="M206.17 249.00V276"/>
     </g>
-    <circle cx="183.08" cy="249.00" r="3.7" fill="#fff" stroke="#0969da" stroke-width="2"/>
     <circle cx="206.17" cy="249.00" r="3.7" fill="#fff" stroke="#087763" stroke-width="2"/>
     <g fill="none" stroke-width="1">
       <path d="M553 51.00L580 43" stroke="#a27a51"/>
@@ -44,10 +41,9 @@
       <path d="M553 186.00L580 178" stroke="#a27a51"/>
       <path d="M553 204.00L580 217" stroke="#a27a51"/>
       <path d="M553 249.00L580 243" stroke="#a27a51"/>
-      <path d="M553 169.14L580 156" stroke="#0969da"/>
       <path d="M553 185.80L580 196" stroke="#087763"/>
       <path d="M553 257.86L580 267" stroke="#8250df"/>
-      <path d="M183.08 249.00L170 240 M206.17 249.00L221 240" stroke="#8c959f"/>
+      <path d="M206.17 249.00L221 240" stroke="#8c959f"/>
     </g>
     <g font-size="14" font-weight="600">
       <text x="588" y="47" fill="#704416">Spectrum Pro ($25 + transfer)</text>
@@ -55,10 +51,8 @@
       <text x="588" y="182" fill="#704416">ngrok Hobbyist ($10)</text>
       <text x="588" y="221" fill="#704416">LocalXpose Pro ($8, billed yearly)</text>
       <text x="588" y="247" fill="#704416">Playit Premium / Pinggy Pro ($3)</text>
-      <text x="588" y="160" fill="#0969da">Tovela (asia-northeast1)</text>
       <text x="588" y="200" fill="#087763">Tovela (us-central1)</text>
-      <text x="588" y="271" fill="#8250df">Localtonet</text>
-      <text x="166" y="237" text-anchor="middle" fill="#0550ae">≈182 h</text>
+      <text x="588" y="271" fill="#8250df">Localtonet Pay-as-you-go</text>
       <text x="228" y="237" text-anchor="middle" fill="#076755">≈215 h</text>
     </g>
   </g>
