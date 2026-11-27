@@ -33,11 +33,10 @@ Anycast can route players through nearby edges automatically. Choosing a region 
 
 ### Monthly relay cost
 
-![Monthly costs for selected services and hourly estimates for Tovela in Iowa](docs/monthly-relay-cost.svg)
+![Monthly costs by hours online for selected services and four Tovela machine types in Iowa](docs/monthly-relay-cost.svg)
 
-The chart uses one Localtonet tunnel (one public port) and the default e2-micro. Tovela estimates use Iowa rates with a 10 GiB standard disk and public IPv4. Estimates exclude transfer, taxes, and credits. [Compute](https://cloud.google.com/products/compute/pricing/general-purpose), [disk](https://cloud.google.com/compute/disks-image-pricing), [IPv4](https://cloud.google.com/vpc/network-pricing#ipaddress), [Free Tier](https://docs.cloud.google.com/free/docs/free-cloud-features#compute)
+The chart uses one Localtonet tunnel (one public port). Tovela estimates use Iowa rates with a 10 GiB standard disk and public IPv4. Estimates exclude transfer, taxes, and credits. [Compute](https://cloud.google.com/products/compute/pricing/general-purpose), [disk](https://cloud.google.com/compute/disks-image-pricing), [IPv4](https://cloud.google.com/vpc/network-pricing#ipaddress), [Free Tier](https://docs.cloud.google.com/free/docs/free-cloud-features#compute)
 
-![Iowa relay cost at 100 hours per month for each Tovela machine type. e2-micro $1.39, e2-small $2.23, e2-medium $3.91, e2-standard-2 $7.26.](docs/relay-machine-cost.svg)
 
 The three shared-core types can briefly burst to two vCPUs. [E2 machine types](https://docs.cloud.google.com/compute/docs/general-purpose-machines#sharedcore)
 
