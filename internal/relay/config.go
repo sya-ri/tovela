@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strings"
 
 	"github.com/sya-ri/tovela/internal/locale"
@@ -20,8 +19,22 @@ const credentialService = "tovela"
 const DefaultTCPPort = 25565
 const DefaultMachineType = "e2-micro"
 
+var machineTypes = [...]struct {
+	name      string
+	memoryMiB int
+}{
+	{DefaultMachineType, 1024},
+	{"e2-small", 2048},
+	{"e2-medium", 4096},
+	{"e2-standard-2", 8192},
+}
+
 func MachineTypes() []string {
-	return []string{DefaultMachineType, "e2-small", "e2-medium", "e2-standard-2"}
+	names := make([]string, 0, len(machineTypes))
+	for _, machine := range machineTypes {
+		names = append(names, machine.name)
+	}
+	return names
 }
 
 var (
@@ -58,6 +71,15 @@ func (c Config) RelayMachineType() string {
 	return c.MachineType
 }
 
+func (c Config) RelayMemoryMiB() int {
+	for _, machine := range machineTypes {
+		if machine.name == c.RelayMachineType() {
+			return machine.memoryMiB
+		}
+	}
+	return 0
+}
+
 func (c *Config) normalize() {
 	c.MachineType = c.RelayMachineType()
 	c.Domain = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(c.Domain)), ".")
@@ -69,7 +91,7 @@ func (c *Config) normalize() {
 }
 
 func (c Config) validate() error {
-	if !slices.Contains(MachineTypes(), c.RelayMachineType()) {
+	if c.RelayMemoryMiB() == 0 {
 		return errors.New(locale.T("Choose a supported machine type."))
 	}
 	if !projectPattern.MatchString(c.Project) || !resourcePattern.MatchString(c.Network) {
