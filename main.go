@@ -32,7 +32,7 @@ func main() {
 	})
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title: "Tovela", Width: 760, Height: 680, MinWidth: 500, MinHeight: 470,
-		URL: "/", BackgroundColour: application.NewRGB(242, 244, 238),
+		URL: "/", BackgroundColour: application.NewRGB(242, 241, 247),
 	})
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
