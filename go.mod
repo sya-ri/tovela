@@ -7,7 +7,7 @@ require (
 	github.com/gofrs/flock v0.13.2
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/oauth2 v0.38.0
-	golang.org/x/sys v0.49.0
+	golang.org/x/sys v0.50.0
 )
 
 require (
@@ -40,7 +40,7 @@ require (
 	github.com/stretchr/testify v1.12.1 // indirect
 	github.com/yuin/goldmark v1.8.2 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
-	golang.org/x/image v0.24.0 // indirect
-	golang.org/x/net v0.35.0 // indirect
-	golang.org/x/text v0.22.0 // indirect
+	golang.org/x/image v0.48.0 // indirect
+	golang.org/x/net v0.63.0 // indirect
+	golang.org/x/text v0.44.0 // indirect
 )
