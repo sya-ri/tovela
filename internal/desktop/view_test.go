@@ -39,9 +39,17 @@ func (b snapshotBackend) RelayLoad(_ context.Context, profileID string) (relay.L
 	if profileID != b.state.ActiveProfile {
 		return relay.Load{}, errors.New("unexpected relay profile")
 	}
-	cpu, memory := 0.126, int64(312<<20)
-	sample := time.Date(2026, 11, 27, 22, 11, 0, 0, time.Local)
-	return relay.Load{CPUFraction: &cpu, MemoryBytes: &memory, CPUTime: sample, MemoryTime: sample}, nil
+	end := time.Date(2026, 11, 27, 22, 15, 0, 0, time.Local)
+	load := relay.Load{End: end}
+	for i, cpu := range []float64{18, 26, 15, 19, 25, 54, 120, 56, 68, 55, 41, 44, 61, 48, 37, 41, 23, 31, 15, 12.6} {
+		if i == 9 {
+			continue
+		}
+		at := end.Add(time.Duration(i-23) * time.Minute)
+		load.CPUPercent = append(load.CPUPercent, relay.LoadSample{At: at, Value: cpu})
+		load.MemoryMiB = append(load.MemoryMiB, relay.LoadSample{At: at, Value: float64(236 + i*4)})
+	}
+	return load, nil
 }
 
 func (b snapshotBackend) MeasureRelayZones(_ context.Context, zones []string) (map[string]time.Duration, error) {

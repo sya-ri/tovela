@@ -6,11 +6,14 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"sync"
 	"time"
 
 	"github.com/sya-ri/tovela/internal/locale"
 )
+
+const LoadWindow = 30 * time.Minute
 
 const (
 	cpuUtilization = "compute.googleapis.com/instance/cpu/utilization"
@@ -18,10 +21,14 @@ const (
 )
 
 type Load struct {
-	CPUFraction *float64
-	CPUTime     time.Time
-	MemoryBytes *int64
-	MemoryTime  time.Time
+	End        time.Time
+	CPUPercent []LoadSample
+	MemoryMiB  []LoadSample
+}
+
+type LoadSample struct {
+	At    time.Time
+	Value float64
 }
 
 type monitoringPoint struct {
@@ -32,7 +39,7 @@ type monitoringPoint struct {
 	}
 }
 
-// RelayLoad reads the latest host metrics for the instance owned by the running profile.
+// RelayLoad reads recent host metrics for the instance owned by the running profile.
 func (d *Desktop) RelayLoad(ctx context.Context, profileID string) (Load, error) {
 	d.mu.Lock()
 	profile := d.profiles[profileID]
@@ -59,18 +66,14 @@ func (d *Desktop) RelayLoad(ctx context.Context, profileID string) (Load, error)
 }
 
 func readRelayLoad(ctx context.Context, client *http.Client, config Config, instanceID string, now time.Time) (Load, error) {
-	var (
-		load              Load
-		cpuErr, memoryErr error
-		requests          sync.WaitGroup
-	)
+	load := Load{End: now.Truncate(time.Second)}
+	var cpuErr, memoryErr error
+	var requests sync.WaitGroup
 	requests.Go(func() {
-		point, err := latestMetric(ctx, client, config, instanceID, cpuUtilization, now)
-		load.CPUFraction, load.CPUTime, cpuErr = point.Value.DoubleValue, point.Interval.EndTime, err
+		load.CPUPercent, cpuErr = metricHistory(ctx, client, config, instanceID, cpuUtilization, load.End)
 	})
 	requests.Go(func() {
-		point, err := latestMetric(ctx, client, config, instanceID, memoryUsed, now)
-		load.MemoryBytes, load.MemoryTime, memoryErr = point.Value.Int64Value, point.Interval.EndTime, err
+		load.MemoryMiB, memoryErr = metricHistory(ctx, client, config, instanceID, memoryUsed, load.End)
 	})
 	requests.Wait()
 	if isHTTP(cpuErr, http.StatusForbidden) || isHTTP(memoryErr, http.StatusForbidden) {
@@ -82,10 +85,11 @@ func readRelayLoad(ctx context.Context, client *http.Client, config Config, inst
 	return load, nil
 }
 
-func latestMetric(ctx context.Context, client *http.Client, config Config, instanceID, metric string, now time.Time) (monitoringPoint, error) {
+func metricHistory(ctx context.Context, client *http.Client, config Config, instanceID, metric string, now time.Time) ([]LoadSample, error) {
+	start := now.Add(-LoadWindow)
 	query := url.Values{
 		"filter":             {fmt.Sprintf(`metric.type = %q AND resource.type = "gce_instance" AND resource.labels.instance_id = %q AND resource.labels.zone = %q AND resource.labels.project_id = %q`, metric, instanceID, config.Zone, config.Project)},
-		"interval.startTime": {now.Add(-10 * time.Minute).UTC().Format(time.RFC3339)},
+		"interval.startTime": {start.UTC().Format(time.RFC3339)},
 		"interval.endTime":   {now.UTC().Format(time.RFC3339)},
 		"view":               {"FULL"},
 	}
@@ -94,17 +98,23 @@ func latestMetric(ctx context.Context, client *http.Client, config Config, insta
 	}
 	address := "https://monitoring.googleapis.com/v3/projects/" + config.Project + "/timeSeries?" + query.Encode()
 	if err := request(ctx, client, http.MethodGet, address, nil, &response); err != nil {
-		return monitoringPoint{}, err
+		return nil, err
 	}
-	var latest monitoringPoint
+	var samples []LoadSample
 	for _, series := range response.TimeSeries {
 		for _, point := range series.Points {
-			hasValue := point.Value.DoubleValue != nil && metric == cpuUtilization ||
-				point.Value.Int64Value != nil && metric == memoryUsed
-			if hasValue && point.Interval.EndTime.After(latest.Interval.EndTime) {
-				latest = point
+			at := point.Interval.EndTime
+			if at.Before(start) || at.After(now) {
+				continue
+			}
+			switch {
+			case metric == cpuUtilization && point.Value.DoubleValue != nil && *point.Value.DoubleValue >= 0:
+				samples = append(samples, LoadSample{At: at, Value: *point.Value.DoubleValue * 100})
+			case metric == memoryUsed && point.Value.Int64Value != nil && *point.Value.Int64Value >= 0:
+				samples = append(samples, LoadSample{At: at, Value: float64(*point.Value.Int64Value) / (1 << 20)})
 			}
 		}
 	}
-	return latest, nil
+	slices.SortFunc(samples, func(a, b LoadSample) int { return a.At.Compare(b.At) })
+	return slices.CompactFunc(samples, func(a, b LoadSample) bool { return a.At.Equal(b.At) }), nil
 }
