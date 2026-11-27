@@ -2,6 +2,25 @@ package relay
 
 import "testing"
 
+func TestNewProfileDoesNotInheritLocation(t *testing.T) {
+	current := DefaultConfig("", "")
+	current.Project, current.Zone, current.Network = "test-project", "europe-west2-a", "relay-vpc"
+	desktop := &Desktop{
+		root:   t.TempDir(),
+		active: "default",
+		profiles: map[string]*Service{
+			"default": {state: State{Config: current, Phase: "idle"}},
+		},
+	}
+	if err := desktop.AddProfile(); err != nil {
+		t.Fatal(err)
+	}
+	got := desktop.GetState().Config
+	if got.Project != current.Project || got.Network != current.Network || got.Zone != "" {
+		t.Errorf("new profile location configuration = %s/%s on %s", got.Project, got.Zone, got.Network)
+	}
+}
+
 func TestConfigRelayZone(t *testing.T) {
 	config := DefaultConfig("", "")
 	config.Project, config.Domain = "test-project", "mc.example.com"

@@ -105,7 +105,7 @@ func (d *Desktop) AddProfile() error {
 	defer d.mu.Unlock()
 	current := d.profiles[d.active].GetState().Config
 	config := DefaultConfig(current.GoogleClientID, current.CloudflareClientID)
-	config.Project, config.Zone, config.Network = current.Project, current.Zone, current.Network
+	config.Project, config.Network = current.Project, current.Network
 	id := requestID()
 	path := d.path(id)
 	if err := saveConfig(path, config); err != nil {
