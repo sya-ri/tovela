@@ -14,31 +14,37 @@ Share Minecraft Java and other local game servers on your own domain. Tovela sta
 
 ## Service comparison
 
-✅ Supported, 🌐 automatic routing, ⚠️ limits or extra cost, ❌ unavailable. Checked November 27, 2026.
+Checked November 27, 2026.
 
-| Service | Price | Relay routing | Stable endpoint | Custom hostname | Multiple custom hostnames | UDP | Multiple public ports |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| [ngrok Free](https://ngrok.com/pricing) | $0 (card required) | ⚠️ [Agent location](https://ngrok.com/docs/universal-gateway/global-load-balancer) | ❌ Random address | ⚠️ DNS alias | ⚠️ [TCP aliases](https://ngrok.com/docs/gateway/domains/custom-domains#using-custom-domains-with-tcp-endpoints), random endpoints | ❌ | ✅ [Up to 3 endpoints](https://ngrok.com/docs/pricing-limits) within usage limits |
-| [ngrok Hobbyist](https://ngrok.com/docs/gateway/domains/tcp-addresses) | $10/mo | ✅ [8 locations](https://ngrok.com/docs/gateway/points-of-presence) | ✅ Reserved address | ⚠️ [CNAME + port](https://ngrok.com/docs/gateway/domains/custom-domains#using-custom-domains-with-tcp-endpoints) or SRV | ⚠️ TCP aliases, 1 fixed TCP address included | ❌ | ✅ [Up to 3 endpoints](https://ngrok.com/docs/pricing-limits) within credit, 1 fixed TCP address included |
-| [Playit Free](https://playit.gg/) | $0 | 🌐 [Global Anycast](https://playit.gg/support/playit-premium/) | ✅ Per tunnel | ⚠️ Java SRV | ⚠️ Java SRV aliases | ✅ Separate tunnel | ✅ [4 ports included](https://playit.gg/support/playit-premium/#more) for supported tunnel types |
-| [Playit Premium](https://playit.gg/support/playit-premium/) | From $3/mo | ✅ [21 regional networks](https://ping.playit.gg/) | ✅ Per tunnel | ✅ [External domain](https://playit.gg/support/external-domain-cloudflare/) | ✅ External names assignable per tunnel | ✅ Combined TCP+UDP | ✅ [16 ports included](https://playit.gg/support/playit-premium/#more) |
-| [Localtonet Free](https://localtonet.com/pricing) | $0 (30 min per start, 1 GB per 30 days) | ✅ [20 listed locations](https://localtonet.com/#server-map) | ❌ Port can change | ❌ | ❌ | ✅ Combined TCP+UDP | ❌ 1 tunnel, [1 public port](https://localtonet.com/documents/udp-tcp) |
-| [Localtonet Pay-as-you-go](https://localtonet.com/documents/plans-and-balance) | ~$2 per tunnel at 720 h, billed hourly | ✅ [20 listed locations](https://localtonet.com/#server-map) | ✅ Reserved port | ✅ [Localtonet DNS](https://localtonet.com/documents/custom-domains) | ⚠️ 1 billed tunnel per hostname | ✅ Combined TCP+UDP | ⚠️ Multiple billed tunnels, 1 public port each |
-| [Pinggy](https://pinggy.io/#pricing) | $0 (60 min) or $3/mo | ✅ [3 documented regions](https://forum.pinggy.io/t/pinggy-latency-may-drift-after-tunnel-restart/112/2) | ⚠️ Pro | ⚠️ [Pro + port](https://pinggy.io/docs/http_tunnels/multi_port_forwarding/) | ⚠️ [Pro wildcard routing](https://pinggy.io/docs/http_tunnels/multi_port_forwarding/), raw TCP routes by port | ✅ Pinggy CLI | ✅ [Multiple forwardings](https://pinggy.io/docs/http_tunnels/multi_port_forwarding/), Pro priced per seat |
-| [LocalXpose Pro](https://localxpose.io/pricing) | $8/mo, billed yearly | ✅ [3 regions](https://localxpose.io/docs#regions) | ✅ Reserved port | ⚠️ [CNAME + port](https://localxpose.io/docs/tutorials/access-localhost-keepass) | ⚠️ TCP aliases, 10 reservations per slot | ✅ | ✅ 10 active tunnels included per slot |
-| [TCPShield](https://tcpshield.com/plans) | From $0 for Java | 🌐 [Anycast by default](https://docs.tcpshield.com/faq) | ✅ Protected hostname | ✅ [CNAME](https://docs.tcpshield.com/panel/dns-setup) | ✅ 3 on Free, 10 on Pro, 25 on Premium | ⚠️ [Premium Bedrock](https://docs.tcpshield.com/premium-features/geyser) or [Sentry](https://docs.tcpshield.com/vxlan/sentry-tunnel-general-setup) | ⚠️ Multiple ports via [Sentry](https://docs.tcpshield.com/vxlan/sentry-tunnel-features), pricing unlisted |
-| [Cloudflare Spectrum](https://developers.cloudflare.com/spectrum/protocols-per-plan/) | [Pro $25/mo](https://www.cloudflare.com/plans/pro/) + transfer | 🌐 [Global Anycast](https://developers.cloudflare.com/spectrum/reference/configuration-options/) | ✅ Fixed hostname and port | ✅ Cloudflare DNS | ⚠️ [Aliases share one origin](https://developers.cloudflare.com/spectrum/reference/limitations/), 1 Minecraft app on Pro | ⚠️ Spectrum Enterprise | ⚠️ [Pro app limits](https://developers.cloudflare.com/spectrum/protocols-per-plan/), Spectrum Enterprise for more protocols |
-| Tovela | From $0 | ✅ [Up to 42 regions](https://docs.cloud.google.com/compute/docs/regions-zones#available) | ✅ Fixed hostname | ✅ Cloudflare DNS | ⚠️ [1 VM per active hostname](docs/design.md) | ✅ | ✅ Multiple per VM, no per-port fee |
+| Service | Price | Relay routing | Relay CPU / RAM | Stable endpoint | Custom hostname | Multiple custom hostnames | UDP | Multiple public ports |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| [ngrok Free](https://ngrok.com/pricing) | $0 (card required) | ⚠️ [Agent location](https://ngrok.com/docs/universal-gateway/global-load-balancer) | Managed | ❌ Random address | ⚠️ DNS alias | ⚠️ [TCP aliases](https://ngrok.com/docs/gateway/domains/custom-domains#using-custom-domains-with-tcp-endpoints), random endpoints | ❌ | ✅ [Up to 3 endpoints](https://ngrok.com/docs/pricing-limits) within usage limits |
+| [ngrok Hobbyist](https://ngrok.com/docs/gateway/domains/tcp-addresses) | $10/mo | ✅ [8 locations](https://ngrok.com/docs/gateway/points-of-presence) | Managed | ✅ Reserved address | ⚠️ [CNAME + port](https://ngrok.com/docs/gateway/domains/custom-domains#using-custom-domains-with-tcp-endpoints) or SRV | ⚠️ TCP aliases, 1 fixed TCP address included | ❌ | ✅ [Up to 3 endpoints](https://ngrok.com/docs/pricing-limits) within credit, 1 fixed TCP address included |
+| [Playit Free](https://playit.gg/) | $0 | 🌐 [Global Anycast](https://playit.gg/support/playit-premium/) | Managed | ✅ Per tunnel | ⚠️ Java SRV | ⚠️ Java SRV aliases | ✅ Separate tunnel | ✅ [4 ports included](https://playit.gg/support/playit-premium/#more) for supported tunnel types |
+| [Playit Premium](https://playit.gg/support/playit-premium/) | From $3/mo | ✅ [21 regional networks](https://ping.playit.gg/) | Managed | ✅ Per tunnel | ✅ [External domain](https://playit.gg/support/external-domain-cloudflare/) | ✅ External names assignable per tunnel | ✅ Combined TCP+UDP | ✅ [16 ports included](https://playit.gg/support/playit-premium/#more) |
+| [Localtonet Free](https://localtonet.com/pricing) | $0 (30 min per start, 1 GB per 30 days) | ✅ [20 listed locations](https://localtonet.com/#server-map) | Managed | ❌ Port can change | ❌ | ❌ | ✅ Combined TCP+UDP | ❌ 1 tunnel, [1 public port](https://localtonet.com/documents/udp-tcp) |
+| [Localtonet Pay-as-you-go](https://localtonet.com/documents/plans-and-balance) | ~$2 per tunnel at 720 h, billed hourly | ✅ [20 listed locations](https://localtonet.com/#server-map) | Managed | ✅ Reserved port | ✅ [Localtonet DNS](https://localtonet.com/documents/custom-domains) | ⚠️ 1 billed tunnel per hostname | ✅ Combined TCP+UDP | ⚠️ Multiple billed tunnels, 1 public port each |
+| [Pinggy](https://pinggy.io/#pricing) | $0 (60 min) or $3/mo | ✅ [3 documented regions](https://forum.pinggy.io/t/pinggy-latency-may-drift-after-tunnel-restart/112/2) | Managed | ⚠️ Pro | ⚠️ [Pro + port](https://pinggy.io/docs/http_tunnels/multi_port_forwarding/) | ⚠️ [Pro wildcard routing](https://pinggy.io/docs/http_tunnels/multi_port_forwarding/), raw TCP routes by port | ✅ Pinggy CLI | ✅ [Multiple forwardings](https://pinggy.io/docs/http_tunnels/multi_port_forwarding/), Pro priced per seat |
+| [LocalXpose Pro](https://localxpose.io/pricing) | $8/mo, billed yearly | ✅ [3 regions](https://localxpose.io/docs#regions) | Managed | ✅ Reserved port | ⚠️ [CNAME + port](https://localxpose.io/docs/tutorials/access-localhost-keepass) | ⚠️ TCP aliases, 10 reservations per slot | ✅ | ✅ 10 active tunnels included per slot |
+| [Cloudflare Spectrum](https://developers.cloudflare.com/spectrum/protocols-per-plan/) | [Pro $25/mo](https://www.cloudflare.com/plans/pro/) + transfer | 🌐 [Global Anycast](https://developers.cloudflare.com/spectrum/reference/configuration-options/) | Managed | ✅ Fixed hostname and port | ✅ Cloudflare DNS | ⚠️ [Aliases share one origin](https://developers.cloudflare.com/spectrum/reference/limitations/), 1 Minecraft app on Pro | ⚠️ Spectrum Enterprise | ⚠️ [Pro app limits](https://developers.cloudflare.com/spectrum/protocols-per-plan/), Spectrum Enterprise for more protocols |
+| Tovela | From $0 | ✅ [Up to 42 regions](https://docs.cloud.google.com/compute/docs/regions-zones#available) | 0.25–2 sustained vCPU, 1–8 GiB | ✅ Fixed hostname | ✅ Cloudflare DNS | ⚠️ [1 VM per active hostname](docs/design.md) | ✅ | ✅ Multiple per VM, no per-port fee |
 
 Anycast can route players through nearby edges automatically. Choosing a region keeps the relay in a specific location. [Anycast routing](https://developers.cloudflare.com/cloudflare-wan/glossary/)
-
-TCPShield’s Java proxy [needs a reachable backend](https://docs.tcpshield.com/miscellaneous/protect-a-home-hosted-server).
 
 ### Monthly relay cost
 
 ![Monthly costs for selected services and hourly estimates for Tovela in Iowa](docs/monthly-relay-cost.svg)
 
-The chart uses one Localtonet tunnel (one public port) and one Iowa e2-micro VM with disk and IPv4. Estimates exclude transfer, taxes, and credits. [Compute](https://cloud.google.com/products/compute/pricing/general-purpose), [disk](https://cloud.google.com/compute/disks-image-pricing), [IPv4](https://cloud.google.com/vpc/network-pricing#ipaddress), [Free Tier](https://docs.cloud.google.com/free/docs/free-cloud-features#compute)
+The chart uses one Localtonet tunnel (one public port) and the default e2-micro. Tovela estimates use Iowa rates with a 10 GiB standard disk and public IPv4. Estimates exclude transfer, taxes, and credits. [Compute](https://cloud.google.com/products/compute/pricing/general-purpose), [disk](https://cloud.google.com/compute/disks-image-pricing), [IPv4](https://cloud.google.com/vpc/network-pricing#ipaddress), [Free Tier](https://docs.cloud.google.com/free/docs/free-cloud-features#compute)
+
+| Machine type | Sustained vCPU | RAM | Max VM egress | Cost at 100 h | Hours to $3 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| e2-micro (default) | 0.25 | 1 GiB | 1 Gbps | $1.39 | 215 h |
+| e2-small | 0.5 | 2 GiB | 1 Gbps | $2.23 | 135 h |
+| e2-medium | 1 | 4 GiB | 2 Gbps | $3.91 | 77 h |
+| e2-standard-2 | 2 | 8 GiB | 4 Gbps | $7.26 | 41 h |
+
+The three shared-core types can briefly burst to two vCPUs. [E2 machine types](https://docs.cloud.google.com/compute/docs/general-purpose-machines#sharedcore)
 
 ## Default game server ports
 
