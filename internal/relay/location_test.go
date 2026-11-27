@@ -18,7 +18,7 @@ func TestRelayZonesListsMatchingZonesAcrossPages(t *testing.T) {
 			t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
 		}
 		query := req.URL.Query()
-		if query.Get("filter") != `name = "e2-micro"` || query.Get("returnPartialSuccess") != "true" {
+		if query.Get("filter") != `name eq "e2-micro|e2-small|e2-medium|e2-standard-2"` || query.Get("returnPartialSuccess") != "true" {
 			t.Fatalf("unexpected query: %s", query.Encode())
 		}
 		switch query.Get("pageToken") {
@@ -48,7 +48,7 @@ func TestRelayZonesListsMatchingZonesAcrossPages(t *testing.T) {
 	gce := compute{client: client, config: Config{Project: "example-project"}}
 	got, err := gce.relayZones(context.Background())
 	want := []string{"asia-northeast1-b", "southamerica-east1-b", "us-central1-f"}
-	if err != nil || !slices.Equal(got, want) || calls != 2 {
+	if err != nil || !slices.Equal(got[DefaultMachineType], want) || !slices.Equal(got["e2-small"], []string{"europe-west2-a"}) || len(got) != 2 || calls != 2 {
 		t.Fatalf("relayZones() = %v, %v after %d calls, want %v after 2 calls", got, err, calls, want)
 	}
 }

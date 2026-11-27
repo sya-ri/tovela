@@ -1,6 +1,6 @@
 # Design
 
-Tovela runs one relay VM per active hostname. Create a profile for each hostname you want to share. Each profile has its own Google Cloud zone, port mappings, and expiry, so several relays can run at once. Stop a relay before deleting its profile. Servers and game data stay on the host computer.
+Tovela runs one relay VM per active hostname. Create a profile for each hostname you want to share. Each profile has its own Google Cloud zone, machine type, port mappings, and expiry, so several relays can run at once. Stop a relay before deleting its profile. Servers and game data stay on the host computer.
 
 ## Architecture
 
@@ -13,21 +13,21 @@ flowchart LR
     Local <-->|"Local TCP / UDP"| Server["Local game server or service"]
 ```
 
-The desktop app loads zones that offer the relay machine type in the selected Google Cloud project. When the profile has no saved zone, it selects a zone in the region with the shortest measured connection time from the host computer. The app reuses the zone list and recommendation until it closes or the operator signs in to Google again. The zone selector shows the host computer's regional connection time in milliseconds using [regional Google Cloud Storage endpoints](https://docs.cloud.google.com/storage/docs/regional-endpoints). Players may get a better connection from a different zone.
+The desktop app loads zones for the supported machine types in the selected Google Cloud project. Profiles default to e2-micro. Larger E2 types can be selected while the relay is stopped. [E2 machine types](https://docs.cloud.google.com/compute/docs/general-purpose-machines#e2_machine_types) When the profile has no saved zone, it selects a zone in the region with the shortest measured connection time from the host computer. The app reuses the zone list and recommendation until it closes or the operator signs in to Google again. The zone selector shows the host computer's regional connection time in milliseconds using [regional Google Cloud Storage endpoints](https://docs.cloud.google.com/storage/docs/regional-endpoints). Players may get a better connection from a different zone.
 
 The app finds the Cloudflare zone matching the hostname unless the operator selects one. A new profile has one Minecraft Java mapping on TCP 25565. For other games or services, configure their TCP and UDP ports on the same profile. A blank public port uses the local port number. For example, map a plugin's local HTTP port 8080 to public TCP port 80 to serve `http://web.example.com`. TCP mappings forward the service's bytes and leave TLS to the local service.
 
 ## Relay lifecycle
 
 1. Probe local TCP mappings using Minecraft Java status or a TCP connection, then look up the relay by name in the configured zone. Reuse a matching session only when its ownership labels agree.
-2. Ask the operator to confirm replacement if existing A, AAAA, or CNAME records conflict with the relay hostname. Minecraft Java mode also checks its Java SRV record. Check that the zone offers `e2-micro` before creating a relay. Use the same `requestId` for creation retries. Look up the VM again on a name conflict. Give each new VM an ephemeral IPv4 address, a deletion deadline, and an auto-deleting boot disk.
+2. Ask the operator to confirm replacement if existing A, AAAA, or CNAME records conflict with the relay hostname. Minecraft Java mode also checks its Java SRV record. Check that the zone offers the selected machine type before creating a relay. Use the same `requestId` for creation retries. Look up the VM again on a name conflict. Give each new VM an ephemeral IPv4 address, a deletion deadline, and an auto-deleting boot disk.
 3. Start the frp tunnel, probe the public TCP mappings, and wait for the UDP mappings to register. Publish a DNS-only A record with a 60-second TTL.
 4. Extend a running relay by four hours by updating its GCE termination time. The app displays the expiry confirmed by GCE.
 5. On stop, remove the session's DNS record and delete its VM. Attempt VM deletion if DNS cleanup fails. After a forced app exit, GCE deletes the VM at expiry, and the next start or stop reconciles stale DNS.
 
 ## Credentials and tunnel
 
-Google and Cloudflare sign-in uses the system browser, Authorization Code with PKCE, and the OS credential store. Google access uses the Compute Engine scope. Cloudflare access uses zone lookup and DNS write. Operators manage IAM, billing, and API access in their own cloud accounts. Apply each provider's OAuth publication requirements before distributing the app.
+Google and Cloudflare sign-in uses the system browser, Authorization Code with PKCE, and the OS credential store. Google access uses the Compute Engine and read-only Monitoring scopes. Cloudflare access uses zone lookup and DNS write. Operators manage IAM, billing, and API access in their own cloud accounts. Apply each provider's OAuth publication requirements before distributing the app.
 
 The build bundles a pinned `frpc` for the target OS and CPU. The VM downloads and verifies `frps` at the same version. Each session authenticates with its own token, and the client verifies the server certificate over TLS. Distributions include the frp license.
 

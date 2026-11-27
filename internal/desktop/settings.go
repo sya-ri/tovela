@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
@@ -23,7 +24,10 @@ func (v *view) openSettings() {
 	domain := entry(config.Domain, "mc.example.com")
 	project := entry(config.Project, "")
 	ports := newPortEditor(config.Ports)
-	hours := entry(strconv.Itoa(config.Hours), "4")
+	hours := numberEntry(strconv.Itoa(config.Hours), "4")
+	machine := &widget.Select{
+		Options: relay.MachineTypes(), Selected: config.RelayMachineType(), PlaceHolder: locale.T("Choose a machine type"),
+	}
 	picker := newZonePicker(v.window, config.Zone)
 	zone := picker.button
 
@@ -34,7 +38,7 @@ func (v *view) openSettings() {
 	googleID := entry(config.GoogleClientID, locale.T("Client ID"))
 	cfID := entry(config.CloudflareClientID, locale.T("Client ID"))
 
-	inputs := []fyne.Disableable{domain, project, hours, network, cfZone, googleID, cfID}
+	inputs := []fyne.Disableable{domain, project, machine, hours, network, cfZone, googleID, cfID}
 	readConfig := func() (relay.Config, error) {
 		duration, err := strconv.Atoi(strings.TrimSpace(hours.Text))
 		if err != nil {
@@ -45,7 +49,7 @@ func (v *view) openSettings() {
 			return relay.Config{}, err
 		}
 		return relay.Config{
-			Project: project.Text, Zone: picker.selected(), Network: strings.TrimSpace(network.Text),
+			Project: project.Text, MachineType: machine.Selected, Zone: picker.selected(), Network: strings.TrimSpace(network.Text),
 			Domain: domain.Text, CloudflareZone: cfZone.Text, Ports: mappings, Hours: duration,
 			GoogleClientID: googleID.Text, CloudflareClientID: cfID.Text,
 		}, nil
@@ -91,16 +95,18 @@ func (v *view) openSettings() {
 			if closed {
 				return
 			}
-			zones = choices.zones
-			if len(zones) > 0 {
-				latencies := choices.latencies
-				picker.setOptions(zones, latencies)
+			zones = choices.zones[machine.Selected]
+			v.problem = ""
+			if choices.zones != nil {
+				picker.setOptions(zones, choices.latencies)
 				if picker.selected() == "" {
-					picker.selectZone(fastestZone(zones, latencies))
+					picker.selectZone(fastestZone(zones, choices.latencies))
+				}
+				if len(zones) == 0 {
+					v.problem = locale.T("No zones offer this machine type.")
 				}
 			}
-			v.problem = ""
-			if choices.err != nil && (len(zones) == 0 || picker.selected() == "") {
+			if choices.err != nil && (choices.zones == nil || (len(zones) > 0 && picker.selected() == "")) {
 				v.problem = choices.err.Error()
 			}
 			v.render()
@@ -111,34 +117,43 @@ func (v *view) openSettings() {
 	}
 
 	project.OnSubmitted = func(string) { loadZones(nil) }
+	machine.OnChanged = func(string) {
+		if canLoad() {
+			loadZones(nil)
+		} else {
+			zones = nil
+			picker.setOptions(nil, nil)
+			v.settingsChanged()
+		}
+	}
 
-	google := widget.NewButtonWithIcon("", googleIcon, func() {
+	google := widget.NewButton("", func() {
 		perform("google", func() {
 			clear(v.locations)
 			loadZones(nil)
 		})
 	})
-	cloudflare := widget.NewButtonWithIcon("", cloudflareIcon, func() { perform("cloudflare", nil) })
+	cloudflare := widget.NewButton("", func() { perform("cloudflare", nil) })
 	google.Alignment = widget.ButtonAlignLeading
 	cloudflare.Alignment = widget.ButtonAlignLeading
-	cloudflareButton := container.NewThemeOverride(cloudflare, cloudflareButtonTheme{cloudflare.Theme()})
 	form := settingsForm(
 		settingRow{label: "Relay"},
-		settingRow{"Hostname", domain},
-		settingRow{"Project ID", project},
-		settingRow{"Relay location", picker.content},
-		settingRow{"Auto-delete after (h)", hours},
+		settingRow{label: "Hostname", control: domain},
+		settingRow{label: "Project ID", control: project},
+		settingRow{label: "Machine type", control: machine},
+		settingRow{label: "Relay location", control: picker.content},
+		settingRow{label: "Auto-delete after (h)", control: hours},
 		settingRow{label: "Network"},
-		settingRow{"Ports", ports.content},
+		settingRow{label: "Ports", control: ports.content},
 		settingRow{label: "Accounts"},
-		settingRow{"Google", google},
-		settingRow{"Cloudflare", cloudflareButton},
+		settingRow{label: "Google", control: google, icon: googleIcon},
+		settingRow{label: "Cloudflare", control: cloudflare, icon: cloudflareIcon},
 	)
 	advanced := widget.NewAccordion(widget.NewAccordionItem(locale.T("Advanced"), settingsForm(
-		settingRow{"VPC network", network},
-		settingRow{"Cloudflare zone", cfZone},
-		settingRow{"Google OAuth client ID", googleID},
-		settingRow{"Cloudflare OAuth client ID", cfID},
+		settingRow{label: "VPC network", control: network},
+		settingRow{label: "Cloudflare zone", control: cfZone},
+		settingRow{label: "Google OAuth client ID", control: googleID},
+		settingRow{label: "Cloudflare OAuth client ID", control: cfID},
 	)))
 	message := widget.NewLabel("")
 	message.Wrapping = fyne.TextWrapWord
@@ -248,24 +263,34 @@ func (v *view) openSettings() {
 }
 
 func (v *view) updateLogin(btn *widget.Button, id *widget.Entry, ready bool) {
-	label := "Sign in"
+	label, icon := "Sign in", theme.LoginIcon()
 	if ready {
-		label = "Connected"
+		label, icon = "Connected", theme.ConfirmIcon()
 	}
 	btn.SetText(locale.T(label))
+	btn.SetIcon(icon)
 	setEnabled(btn, !v.busy && !v.closing && strings.TrimSpace(id.Text) != "")
 }
 
 type settingRow struct {
 	label   string
 	control fyne.CanvasObject
+	icon    fyne.Resource
 }
 
 func settingsForm(rows ...settingRow) *fyne.Container {
 	cells := make([]fyne.CanvasObject, 0, 2*len(rows))
 	for i, row := range rows {
 		if row.control != nil {
-			cells = append(cells, widget.NewLabel(locale.T(row.label)), row.control)
+			var label fyne.CanvasObject = widget.NewLabel(locale.T(row.label))
+			if row.icon != nil {
+				size := theme.Size(theme.SizeNameInlineIcon)
+				mark := canvas.NewImageFromResource(row.icon)
+				mark.FillMode = canvas.ImageFillContain
+				mark.SetMinSize(fyne.NewSize(size*1.4, size))
+				label = container.NewHBox(container.NewCenter(mark), label)
+			}
+			cells = append(cells, label, row.control)
 			continue
 		}
 
@@ -282,6 +307,14 @@ func settingsForm(rows ...settingRow) *fyne.Container {
 
 func entry(value, placeholder string) *widget.Entry {
 	input := widget.NewEntry()
+	input.SetText(value)
+	input.SetPlaceHolder(placeholder)
+	return input
+}
+
+// Short numeric fields use the form's clipping region without a nested scroller.
+func numberEntry(value, placeholder string) *widget.Entry {
+	input := &widget.Entry{Wrapping: fyne.TextWrapOff, Scroll: fyne.ScrollNone}
 	input.SetText(value)
 	input.SetPlaceHolder(placeholder)
 	return input

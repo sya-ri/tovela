@@ -6,9 +6,11 @@ import (
 	"image/color"
 	"os"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/theme"
@@ -26,8 +28,20 @@ func (b snapshotBackend) GetState() relay.DesktopState {
 	return b.state
 }
 
-func (b snapshotBackend) RelayZones(context.Context, string, string) ([]string, error) {
-	return []string{"asia-northeast1-b", "europe-west2-a", "northamerica-northeast2-a", "southamerica-east1-b", "us-central1-f"}, nil
+func (b snapshotBackend) RelayZones(context.Context, string, string) (map[string][]string, error) {
+	return map[string][]string{
+		relay.DefaultMachineType: {"asia-northeast1-b", "europe-west2-a", "northamerica-northeast2-a", "southamerica-east1-b", "us-central1-f"},
+		"e2-standard-2":          {"northamerica-northeast2-a"},
+	}, nil
+}
+
+func (b snapshotBackend) RelayLoad(_ context.Context, profileID string) (relay.Load, error) {
+	if profileID != b.state.ActiveProfile {
+		return relay.Load{}, errors.New("unexpected relay profile")
+	}
+	cpu, memory := 0.126, int64(312<<20)
+	sample := time.Date(2026, 11, 27, 22, 11, 0, 0, time.Local)
+	return relay.Load{CPUFraction: &cpu, MemoryBytes: &memory, CPUTime: sample, MemoryTime: sample}, nil
 }
 
 func (b snapshotBackend) MeasureRelayZones(_ context.Context, zones []string) (map[string]time.Duration, error) {
@@ -82,6 +96,7 @@ func TestRelayScreens(t *testing.T) {
 		{name: "starting", phase: "starting"},
 		{name: "online", phase: "running"},
 		{name: "online-dark", phase: "running", dark: true},
+		{name: "load-ja", phase: "running", locale: "ja-JP", narrow: true},
 		{name: "error", phase: "idle", problem: "Check your local Minecraft Java server on port 25565."},
 		{name: "settings", phase: "idle"},
 		{name: "settings-options", phase: "idle"},
@@ -89,11 +104,11 @@ func TestRelayScreens(t *testing.T) {
 		{name: "settings-ja", locale: "ja-JP", phase: "idle"},
 		{name: "settings-default-ports", phase: "idle"},
 		{name: "settings-narrow-ja", locale: "ja-JP", phase: "idle", narrow: true},
-		{name: "settings-bottom-ja", locale: "ja-JP", phase: "idle"},
+		{name: "settings-bottom-ja", locale: "ja-JP", phase: "idle", narrow: true},
 		{name: "frpc-blocked-ja", locale: "ja-JP", phase: "idle"},
 		{name: "dns-conflict-ja", locale: "ja-JP", phase: "idle"},
 	} {
-		t.Run(screen.name, func(t *testing.T) {
+		render := func(t *testing.T) {
 			if err := locale.Use(screen.locale); err != nil {
 				t.Fatal(err)
 			}
@@ -110,9 +125,6 @@ func TestRelayScreens(t *testing.T) {
 			if screen.narrow {
 				size = fyne.NewSize(500, 410)
 			}
-			if screen.name == "settings-bottom-ja" {
-				size.Height = 580
-			}
 			window.Resize(size)
 			config := relay.DefaultConfig("google-client", "cloudflare-client")
 			config.Domain, config.Project, config.Zone = "play.example.com", "example-project", "northamerica-northeast2-a"
@@ -127,6 +139,9 @@ func TestRelayScreens(t *testing.T) {
 					Config: config, Phase: screen.phase, Problem: screen.problem,
 					GoogleReady: true, CloudflareReady: true,
 				},
+			}
+			if screen.name == "settings-bottom-ja" {
+				state.CloudflareReady = false
 			}
 			if screen.name == "setup" {
 				state.Config = relay.DefaultConfig("", "")
@@ -150,6 +165,13 @@ func TestRelayScreens(t *testing.T) {
 				case "settings-bottom-ja":
 					checkSettingsScroll(t, v)
 				}
+			case "load-ja":
+				test.Tap(v.load)
+				if v.closeLoad == nil {
+					t.Fatal("The load action did not open the metrics dialog.")
+				}
+				defer v.closeLoad()
+				synctest.Wait()
 			case "frpc-blocked", "frpc-blocked-ja":
 				v.showProtectionHistory()
 			case "dns-conflict-ja":
@@ -162,6 +184,13 @@ func TestRelayScreens(t *testing.T) {
 				if window.Canvas().Overlays().Top() == nil {
 					t.Error("The setup action did not open Settings.")
 				}
+			}
+		}
+		t.Run(screen.name, func(t *testing.T) {
+			if screen.name == "load-ja" {
+				synctest.Test(t, render)
+			} else {
+				render(t)
 			}
 		})
 	}
@@ -194,6 +223,15 @@ func TestInitialLocationUsesOneRequestAndMeasurement(t *testing.T) {
 	if zone.AccessibilityLabel() != "us-central1-f" {
 		t.Errorf("manual zone = %q, want us-central1-f", zone.AccessibilityLabel())
 	}
+	for _, object := range test.LaidOutObjects(window.Canvas().Overlays().Top()) {
+		if selectBox, ok := object.(*widget.Select); ok && selectBox.Selected == relay.DefaultMachineType {
+			selectBox.SetSelected("e2-standard-2")
+			break
+		}
+	}
+	if zone.AccessibilityLabel() != "northamerica-northeast2-a" {
+		t.Errorf("zone after changing machine type = %q, want northamerica-northeast2-a", zone.AccessibilityLabel())
+	}
 	test.Tap(settingsButton(t, v, "Close"))
 	test.Tap(v.settings)
 	if v.busy {
@@ -211,7 +249,7 @@ type countedLocationBackend struct {
 	probes int
 }
 
-func (b *countedLocationBackend) RelayZones(ctx context.Context, project, clientID string) ([]string, error) {
+func (b *countedLocationBackend) RelayZones(ctx context.Context, project, clientID string) (map[string][]string, error) {
 	b.lists++
 	return b.snapshotBackend.RelayZones(ctx, project, clientID)
 }
@@ -225,23 +263,42 @@ func checkSettingsScroll(t *testing.T, v *view) {
 	t.Helper()
 	var settings *container.Scroll
 	var signIn []*widget.Button
+	var marks []*canvas.Image
 	for _, object := range test.LaidOutObjects(v.window.Canvas().Overlays().Top()) {
 		switch control := object.(type) {
 		case *container.Scroll:
 			if settings == nil && control.Direction == container.ScrollVerticalOnly {
 				settings = control
 			}
+		case *canvas.Image:
+			if control.Resource == googleIcon || control.Resource == cloudflareIcon {
+				marks = append(marks, control)
+			}
 		case *widget.Button:
-			if control.Icon == googleIcon || control.Icon == cloudflareIcon {
+			switch control.Text {
+			case locale.T("Connected"):
+				if control.Icon != theme.ConfirmIcon() {
+					t.Error("The connected account button needs a check mark.")
+				}
+				signIn = append(signIn, control)
+			case locale.T("Sign in"):
+				if control.Icon != theme.LoginIcon() {
+					t.Error("The sign-in button needs the login icon.")
+				}
 				signIn = append(signIn, control)
 			}
 		}
 	}
-	if settings == nil || len(signIn) != 2 {
+	if settings == nil || len(signIn) != 2 || len(marks) != 2 {
 		t.Fatal("The scrollable settings or account rows are unavailable.")
 	}
 
 	driver := fyne.CurrentApp().Driver()
+	for i, mark := range marks {
+		if driver.AbsolutePositionForObject(mark).X >= driver.AbsolutePositionForObject(signIn[i]).X {
+			t.Errorf("The provider mark is outside the label column.")
+		}
+	}
 	buttons := append(signIn, settingsButton(t, v, locale.T("Save")))
 	positions := make([]float32, len(buttons))
 	for i, button := range buttons {

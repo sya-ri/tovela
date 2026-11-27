@@ -19,8 +19,8 @@ func validZone(zone string) bool {
 	return len(zone) <= 63 && zonePattern.MatchString(zone)
 }
 
-// RelayZones lists zones where the selected project can see the relay machine type.
-func (d *Desktop) RelayZones(ctx context.Context, project, googleID string) ([]string, error) {
+// RelayZones lists zones where the selected project can see supported relay machine types.
+func (d *Desktop) RelayZones(ctx context.Context, project, googleID string) (map[string][]string, error) {
 	config := Config{Project: strings.TrimSpace(project), GoogleClientID: strings.TrimSpace(googleID)}
 	if !projectPattern.MatchString(config.Project) {
 		return nil, errors.New(locale.T("Enter a valid Google Cloud project ID."))
@@ -41,12 +41,13 @@ func (d *Desktop) RelayZones(ctx context.Context, project, googleID string) ([]s
 	return zones, nil
 }
 
-func (c compute) relayZones(ctx context.Context) ([]string, error) {
+func (c compute) relayZones(ctx context.Context) (map[string][]string, error) {
 	query := url.Values{
-		"filter":               {fmt.Sprintf("name = %q", relayMachineType)},
+		"filter":               {fmt.Sprintf("name eq %q", strings.Join(MachineTypes(), "|"))},
 		"returnPartialSuccess": {"true"},
 	}
-	found := make(map[string]struct{})
+	found := make(map[string][]string)
+	supported := MachineTypes()
 	for {
 		var page struct {
 			Items         map[string]struct{ MachineTypes []struct{ Name string } }
@@ -62,9 +63,8 @@ func (c compute) relayZones(ctx context.Context) ([]string, error) {
 				continue
 			}
 			for _, machine := range entry.MachineTypes {
-				if machine.Name == relayMachineType {
-					found[zone] = struct{}{}
-					break
+				if slices.Contains(supported, machine.Name) {
+					found[machine.Name] = append(found[machine.Name], zone)
 				}
 			}
 		}
@@ -73,12 +73,11 @@ func (c compute) relayZones(ctx context.Context) ([]string, error) {
 		}
 		query.Set("pageToken", page.NextPageToken)
 	}
-	zones := make([]string, 0, len(found))
-	for zone := range found {
-		zones = append(zones, zone)
+	for machine, zones := range found {
+		slices.Sort(zones)
+		found[machine] = slices.Compact(zones)
 	}
-	slices.Sort(zones)
-	return zones, nil
+	return found, nil
 }
 
 // MeasureRelayZones estimates latency from this computer using regional Google endpoints.

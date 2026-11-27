@@ -69,6 +69,9 @@ func TestLoadConfigMigratesLegacyPorts(t *testing.T) {
 	}
 	config, err := loadConfig(path, DefaultConfig("", ""))
 	want := []PortMapping{{MinecraftJava, 25570, 25565}, {UDP, 19132, 19132}}
+	if config.RelayMachineType() != DefaultMachineType {
+		t.Errorf("legacy config machine type = %q, want %q", config.RelayMachineType(), DefaultMachineType)
+	}
 	if err != nil || !slices.Equal(config.Ports, want) {
 		t.Fatalf("migrated mappings = %+v, %v, want %+v", config.Ports, err, want)
 	}
