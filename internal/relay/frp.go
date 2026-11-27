@@ -23,9 +23,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/sya-ri/tovela/internal/locale"
 )
 
 const frpVersion = "0.72.0"
+
+// ErrFrpcBlocked indicates that Windows denied access to the bundled client.
+var ErrFrpcBlocked = errors.New("Windows blocked frpc")
 
 //go:embed all:bin
 var frpFiles embed.FS
@@ -130,7 +135,7 @@ func prepareFrpc(ctx context.Context) (path string, err error) {
 	}
 	binary, err := frpFiles.ReadFile("bin/" + name)
 	if err != nil {
-		return "", errors.New("This build does not contain frpc for your OS.")
+		return "", errors.New(locale.T("This build does not contain frpc for your OS."))
 	}
 	dir, err := os.MkdirTemp("", "tovela-frpc-")
 	if err != nil {
@@ -144,7 +149,7 @@ func prepareFrpc(ctx context.Context) (path string, err error) {
 
 	executable := filepath.Join(dir, name)
 	if err := os.WriteFile(executable, binary, 0700); err != nil {
-		return "", err
+		return "", frpcExecutionError(err)
 	}
 	// Detect local execution restrictions before provisioning a billable VM.
 	checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -152,7 +157,7 @@ func prepareFrpc(ctx context.Context) (path string, err error) {
 	probe := exec.CommandContext(checkCtx, executable, "--version")
 	hideConsole(probe)
 	if err := probe.Run(); err != nil {
-		return "", fmt.Errorf("could not run bundled frpc: %w", err)
+		return "", frpcExecutionError(fmt.Errorf(locale.T("could not run bundled frpc: %w"), err))
 	}
 	return executable, nil
 }
@@ -182,7 +187,7 @@ func launchFrpc(executable string, config Config, session identity, ip string) (
 	cmd.Stderr = cmd.Stdout
 	t := &tunnel{cmd: cmd, done: make(chan struct{}), udpReady: make(chan struct{}, 1)}
 	if err := cmd.Start(); err != nil {
-		return nil, err
+		return nil, frpcExecutionError(err)
 	}
 	go func() {
 		lines := bufio.NewScanner(logs)
@@ -222,14 +227,14 @@ func (t *tunnel) waitReady(ctx context.Context, config Config, ip string) error 
 		case <-t.udpReady:
 			udpReady = true
 		case <-t.done:
-			return fmt.Errorf("The relay client exited: %v", t.err)
+			return fmt.Errorf(locale.T("The relay client exited: %v"), t.err)
 		default:
 		}
 		if udpReady && pingMinecraft(ctx, address, config.Domain, 25565) == nil {
 			return nil
 		}
 		if err := pause(ctx, 2*time.Second); err != nil {
-			return errors.New("The public port did not return a Minecraft status. Check the GCE firewall and local server.")
+			return errors.New(locale.T("The public port did not return a Minecraft status. Check the GCE firewall and local server."))
 		}
 	}
 }

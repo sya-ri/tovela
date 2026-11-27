@@ -1,19 +1,43 @@
 package desktop
 
 import (
+	_ "embed"
 	"image/color"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/theme"
+	"github.com/sya-ri/tovela/internal/locale"
+)
+
+//go:embed fonts/regular.ttf
+var mplusRegular []byte
+
+//go:embed fonts/bold.ttf
+var mplusBold []byte
+
+var (
+	japaneseRegular = fyne.NewStaticResource("MPLUS1p-Regular.ttf", mplusRegular)
+	japaneseBold    = fyne.NewStaticResource("MPLUS1p-Bold.ttf", mplusBold)
 )
 
 type palette struct {
 	fyne.Theme
+	useJapaneseFont bool
 }
 
 // Theme applies the relay palette and retains Fyne's platform theme variant.
 func Theme() fyne.Theme {
-	return palette{theme.DefaultTheme()}
+	return palette{theme.DefaultTheme(), locale.Language() == "ja"}
+}
+
+func (p palette) Font(style fyne.TextStyle) fyne.Resource {
+	if !p.useJapaneseFont || style.Monospace || style.Symbol {
+		return p.Theme.Font(style)
+	}
+	if style.Bold {
+		return japaneseBold
+	}
+	return japaneseRegular
 }
 
 func (p palette) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) color.Color {

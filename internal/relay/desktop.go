@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
+
+	"github.com/sya-ri/tovela/internal/locale"
 )
 
 type Profile struct {
@@ -92,7 +94,7 @@ func (d *Desktop) SelectProfile(id string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.profiles[id] == nil {
-		return errors.New("This relay profile does not exist.")
+		return errors.New(locale.T("This relay profile does not exist."))
 	}
 	d.active = id
 	return nil
@@ -123,7 +125,7 @@ func (d *Desktop) SaveConfig(config Config) error {
 	config.normalize()
 	for id, service := range d.profiles {
 		if id != d.active && config.Domain != "" && service.GetState().Config.Domain == config.Domain {
-			return errors.New("A relay profile already uses this hostname.")
+			return errors.New(locale.T("A relay profile already uses this hostname."))
 		}
 	}
 	return d.profiles[d.active].SaveConfig(config)
