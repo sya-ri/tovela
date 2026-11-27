@@ -1,38 +1,62 @@
-# Setup
+# Getting started
 
-## Cloud accounts
+Tovela needs a local Minecraft Java server, a Google Cloud project with billing, and a domain managed in Cloudflare.
 
-1. Enable the Compute Engine API and billing for your Google Cloud project. The signed-in user needs permission to create and delete instances and their boot disks, attach an external IPv4 address, and update VM scheduling. On a standard project with its own VPC, start with the [Compute Instance Admin role](https://docs.cloud.google.com/compute/docs/access/iam#compute.instanceAdmin.v1).
-2. In the VPC used by the app, allow inbound TCP 7000 and 25565 on instances tagged `tovela`. Add each public UDP port you plan to use. Restrict TCP 7000 to your app's outbound address when it is stable. [VPC firewall rules](https://docs.cloud.google.com/firewall/docs/using-firewalls)
-3. Create a Google OAuth client of type **Desktop app**. If the consent screen is in testing, add the operator as a test user. [Google desktop OAuth](https://developers.google.com/identity/protocols/oauth2/native-app)
-4. Create a Cloudflare OAuth client with the authorization code and refresh token grants, token authentication **None**, and the redirect `http://127.0.0.1:42813/callback`. Allow Zone Read and DNS Write. A private client is enough for members of its Cloudflare account. [Cloudflare OAuth clients](https://developers.cloudflare.com/fundamentals/oauth/create-an-oauth-client/)
+## Set up Google Cloud
 
-## Relays
+1. Enable the Compute Engine API. The signed-in user needs to create and delete instances and boot disks, attach an external IPv4 address, and update VM scheduling. On a standard project with its own VPC, start with the [Compute Instance Admin role](https://docs.cloud.google.com/compute/docs/access/iam#compute.instanceAdmin.v1).
+2. In the VPC you will select in Tovela, allow these inbound ports on instances tagged `tovela`. Restrict TCP 7000 to your app's outbound IP when it is stable. [VPC firewall rules](https://docs.cloud.google.com/firewall/docs/using-firewalls)
 
-1. Start your local Minecraft Java server. For a separate UDP service, start it on its local UDP port.
-2. In **Settings**, enter the project, VPC, Cloudflare zone, public hostname, local ports, and OAuth client IDs. Sign in to Google and Cloudflare. Access and refresh tokens are stored in your OS credential store.
-3. Select **Start**. When the relay is online, enter the public hostname in Minecraft. External Java connections use port 25565. External UDP connections use the configured UDP port.
-4. Select **Extend 4 h** to add four hours to the running relay's expiry. Select **Stop** to remove its DNS record and delete its VM and boot disk.
+   | Port | Used by |
+   | --- | --- |
+   | TCP 7000 | The desktop app connects to frp |
+   | TCP 25565 | Players connect to Minecraft Java |
+   | Your UDP port | Clients connect to your optional UDP service |
 
-Add one relay profile per hostname with **Add relay profile**. Set a different local TCP port for each local server. Every active profile starts its own VM and accrues its own relay hours. Keep the desktop app and local servers running while people are connected.
+3. Create a Google OAuth client of type **Desktop app**. Add the operator as a test user if the consent screen is in testing. [Google desktop OAuth](https://developers.google.com/identity/protocols/oauth2/native-app)
 
-**Replace existing DNS records** removes conflicting A, AAAA, CNAME, and Java SRV records when the new relay is ready. Stopping removes the app's A record. The original records must be restored separately if needed. Cached DNS can delay a hostname update or removal.
+## Set up Cloudflare
+
+Create an OAuth client with the settings below. A private client is sufficient for members of the Cloudflare account. [Cloudflare OAuth clients](https://developers.cloudflare.com/fundamentals/oauth/create-an-oauth-client/)
+
+| Setting | Value |
+| --- | --- |
+| Grants | Authorization code and refresh token |
+| Token authentication | None |
+| Redirect URI | `http://127.0.0.1:42813/callback` |
+| Permissions | Zone Read and DNS Write |
+
+## Start a relay
+
+1. Start Minecraft Java locally. If you want to forward UDP, start that service too.
+2. Open **Settings** in Tovela. Enter your Google Cloud project, Tokyo zone, VPC, Cloudflare zone, public hostname, and local ports. Enter the OAuth client IDs and sign in to both providers. The app stores tokens in the OS credential store.
+3. Select **Start**. When the relay is **Online**, enter your hostname in Minecraft. Java uses TCP 25565 publicly, even if you use a different local TCP port. UDP uses the port you entered.
+4. Select **Extend 4 h** to add time or **Stop** to remove the DNS record and delete the VM and boot disk. Keep Tovela and the local server running while players are connected.
+
+Use **Add relay profile** to publish another hostname. Give each local server a different TCP port. Each active profile runs and bills its own VM.
+
+> [!IMPORTANT]
+> **Replace existing DNS records** removes conflicts of type A, AAAA, CNAME, or Java SRV once the relay is ready. **Stop** removes Tovela's A record. Restore any old records manually if needed. DNS caches can outlast a change.
 
 ## Build from source
 
-Use the Go, Node, and pnpm versions in `mise.toml`. Linux needs GTK4, WebKitGTK 6.0, and a running Secret Service provider for OAuth credentials. Windows needs the WebView2 Runtime. Build on the target OS and CPU architecture to bundle the matching frp client.
+Use the versions in [mise.toml](../mise.toml). Build on the target OS and CPU so the script bundles the matching frp client. Windows needs WebView2. Linux needs GTK4, WebKitGTK 6.0, and a running Secret Service provider for credentials.
 
 ```sh
 pnpm --dir frontend install --frozen-lockfile
 pnpm --dir frontend build
 node scripts/bundle-frp.mjs
-go test ./...
 go build -tags production -o build/tovela .
 ```
 
-Use `build/Tovela.exe` as the output on Windows. The [desktop workflow](../.github/workflows/desktop.yml) builds packaged macOS and Linux artifacts and uses the Windows GUI linker option.
+On Windows, use `-o build/Tovela.exe`. The [desktop workflow](../.github/workflows/desktop.yml) shows how the platform packages are built.
+
+## Tests
+
+Build the frontend and bundle frp first. Then run the Go tests and the Chromium UI snapshots.
 
 ```sh
+go test ./...
 pnpm --dir frontend exec playwright install chromium
 pnpm --dir frontend test
 ```
