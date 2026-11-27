@@ -34,7 +34,7 @@
       <path d="M58 276L553 -61.19" stroke="#0969da"/>
       <path d="M58 276L553 -314.49" stroke="#b54712"/>
       <path d="M58 276L553 -821.10" stroke="#aa3d72"/>
-      <path d="M58 276L553 233.66" stroke="#8250df"/>
+      <path d="M58 276L553 233.66" stroke="#8250df" stroke-dasharray="1 5" stroke-linecap="round"/>
     </g>
     <g font-size="13">
       <text x="584" y="29" font-size="14" font-weight="600">Tovela (us-central1)</text>
@@ -43,7 +43,7 @@
         <path d="M585 87H603" stroke="#0969da"/>
         <path d="M585 123H603" stroke="#b54712"/>
         <path d="M585 159H603" stroke="#aa3d72"/>
-        <path d="M585 285H603" stroke="#8250df"/>
+        <path d="M585 285H603" stroke="#8250df" stroke-dasharray="1 5" stroke-linecap="round"/>
       </g>
       <g font-weight="600">
         <text x="612" y="55">e2-micro (default)</text>
