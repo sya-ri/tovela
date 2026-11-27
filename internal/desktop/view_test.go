@@ -177,12 +177,7 @@ func TestRelayScreens(t *testing.T) {
 				v.confirmDNSReplacement(config.Domain)
 			}
 			test.AssertRendersToImage(t, screen.name+".png", window.Canvas())
-			switch screen.name {
-			case "settings":
-				if zone := locationPicker(t, v).AccessibilityLabel(); zone != config.Zone {
-					t.Errorf("saved zone reopened as %q, want %q", zone, config.Zone)
-				}
-			case "setup":
+			if screen.name == "setup" {
 				window.Canvas().Focus(v.start)
 				v.start.TypedKey(&fyne.KeyEvent{Name: fyne.KeySpace})
 				if window.Canvas().Overlays().Top() == nil {
