@@ -15,11 +15,11 @@ jobs:
       matrix:
         include:
           - platform: windows
-            runner: windows-2025
+            runner: windows-latest
           - platform: macos
-            runner: macos-26
+            runner: macos-latest
           - platform: linux
-            runner: ubuntu-26.04
+            runner: ubuntu-latest
     runs-on: ${{ matrix.runner }}
     env:
       CGO_ENABLED: '1'
