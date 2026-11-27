@@ -1,6 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="850" height="318" viewBox="0 0 850 318" role="img" aria-labelledby="title desc">
   <title id="title">Monthly relay costs by hours online</title>
-  <desc id="desc">Hourly estimates for Tovela in Iowa and for Localtonet. Monthly base prices are $3 for Playit Premium and Pinggy Pro, $8 for LocalXpose Pro billed annually, and $10 for ngrok Hobbyist.</desc>
+  <desc id="desc">The chart shows costs up to $12 for a 720-hour month. Tovela lines use Iowa rates for four machine types with disk and public IPv4. e2-micro has 0.25 sustained vCPU, 1 GiB RAM, and up to 1 Gbps egress. e2-small has 0.5 sustained vCPU, 2 GiB RAM, and up to 1 Gbps egress. e2-medium has 1 sustained vCPU, 4 GiB RAM, and up to 2 Gbps egress. e2-standard-2 has 2 vCPUs, 8 GiB RAM, and up to 4 Gbps egress. One Localtonet tunnel is billed hourly. Monthly base prices are $3 for Playit Premium and Pinggy Pro, $8 for LocalXpose Pro billed annually, and $10 for ngrok Hobbyist.</desc>
+  <defs>
+    <clipPath id="plot">
+      <rect x="58" y="24" width="496" height="253"/>
+    </clipPath>
+  </defs>
   <rect x="0.5" y="0.5" width="849" height="317" rx="12" fill="#fff" stroke="#d0d7de"/>
   <g font-family="system-ui, sans-serif" fill="#24292f">
     <path d="M58 276H553 M58 234H553 M58 192H553 M58 150H553 M58 108H553 M58 66H553 M58 24H553" stroke="#d8dee4" fill="none"/>
@@ -15,34 +20,49 @@
       <text x="46" y="29">$12</text>
     </g>
     <g text-anchor="middle" font-size="14" fill="#57606a">
-      <text x="58.00" y="301">0 h</text>
+      <text x="58" y="301">0 h</text>
       <text x="181.75" y="301">180 h</text>
       <text x="305.50" y="301">360 h</text>
       <text x="429.25" y="301">540 h</text>
-      <text x="553.00" y="301">720 h</text>
+      <text x="553" y="301">720 h</text>
     </g>
     <g stroke="#8a5d2c" stroke-width="1.7" stroke-dasharray="7 4" fill="none">
-      <path d="M58 66H553"/>
-      <path d="M58 108H553"/>
-      <path d="M58 213H553"/>
+      <path d="M58 66H553 M58 108H553 M58 213H553"/>
     </g>
-    <g stroke-width="2.8" fill="none">
-      <path d="M58 276L553 65.53" stroke="#087763"/>
+    <g clip-path="url(#plot)" stroke-width="2.6" fill="none">
+      <path d="M58 276L553 65.46" stroke="#087763"/>
+      <path d="M58 276L553 -61.19" stroke="#0969da"/>
+      <path d="M58 276L553 -314.49" stroke="#b54712"/>
+      <path d="M58 276L553 -821.10" stroke="#aa3d72"/>
       <path d="M58 276L553 233.66" stroke="#8250df"/>
     </g>
-    <g fill="none" stroke-width="1">
-      <path d="M553 66L580 53" stroke="#a27a51"/>
-      <path d="M553 108H580" stroke="#a27a51"/>
-      <path d="M553 213H580" stroke="#a27a51"/>
-      <path d="M553 65.53L580 81" stroke="#087763"/>
-      <path d="M553 233.66L580 243" stroke="#8250df"/>
-    </g>
-    <g font-size="14" font-weight="600">
-      <text x="588" y="57" fill="#704416">ngrok Hobbyist ($10)</text>
-      <text x="588" y="85" fill="#087763">Tovela (us-central1)</text>
-      <text x="588" y="112" fill="#704416">LocalXpose Pro ($8, billed yearly)</text>
-      <text x="588" y="217" fill="#704416">Playit Premium / Pinggy Pro ($3)</text>
-      <text x="588" y="247" fill="#8250df">Localtonet Pay-as-you-go</text>
+    <g font-size="13">
+      <text x="584" y="29" font-size="14" font-weight="600">Tovela (us-central1)</text>
+      <g fill="none" stroke-width="2.6">
+        <path d="M585 51H603" stroke="#087763"/>
+        <path d="M585 87H603" stroke="#0969da"/>
+        <path d="M585 123H603" stroke="#b54712"/>
+        <path d="M585 159H603" stroke="#aa3d72"/>
+        <path d="M585 285H603" stroke="#8250df"/>
+      </g>
+      <g font-weight="600">
+        <text x="612" y="55">e2-micro (default)</text>
+        <text x="612" y="91">e2-small</text>
+        <text x="612" y="127">e2-medium</text>
+        <text x="612" y="163">e2-standard-2</text>
+      </g>
+      <g fill="#57606a" font-size="11">
+        <text x="612" y="70">0.25 sustained vCPU, 1 GiB, up to 1 Gbps</text>
+        <text x="612" y="106">0.5 sustained vCPU, 2 GiB, up to 1 Gbps</text>
+        <text x="612" y="142">1 sustained vCPU, 4 GiB, up to 2 Gbps</text>
+        <text x="612" y="178">2 vCPUs, 8 GiB, up to 4 Gbps</text>
+      </g>
+      <path d="M584 193H824" stroke="#d8dee4"/>
+      <path d="M585 213H603 M585 237H603 M585 261H603" stroke="#8a5d2c" stroke-width="1.7" stroke-dasharray="7 4"/>
+      <text x="612" y="217">ngrok Hobbyist ($10)</text>
+      <text x="612" y="241">LocalXpose Pro ($8, billed yearly)</text>
+      <text x="612" y="265">Playit Premium / Pinggy Pro ($3)</text>
+      <text x="612" y="289">Localtonet Pay-as-you-go</text>
     </g>
   </g>
 </svg>
