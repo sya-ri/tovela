@@ -30,7 +30,7 @@ A new profile starts with the **Minecraft** mapping for Java Edition. Match your
 
 ## Service comparison
 
-✅ Supported, ⚠️ limited, ❌ unavailable. Prices checked November 27, 2026.
+✅ Supported, ⚠️ limited or inferred, ❌ unavailable. Prices checked November 27, 2026.
 
 | Service | Price | Stable endpoint | Custom hostname | Minecraft Java list ping on custom hostname | UDP |
 | --- | --- | --- | --- | --- | --- |
@@ -38,11 +38,18 @@ A new profile starts with the **Minecraft** mapping for Java Edition. Match your
 | [ngrok Hobbyist](https://ngrok.com/docs/gateway/domains/tcp-addresses) | $10/month | ✅ Reserved TCP address | ⚠️ [CNAME with assigned port](https://ngrok.com/docs/gateway/domains/custom-domains#using-custom-domains-with-tcp-endpoints) or Java SRV | ✅ Raw TCP via DNS alias | ❌ |
 | [Playit Free](https://playit.gg/) | $0 | ✅ Fixed for the tunnel’s lifetime | ⚠️ Java SRV workaround | ⚠️ Failed in one SRV test | ✅ Separate UDP tunnels |
 | [Playit Premium](https://playit.gg/support/playit-premium/) | From $3/month | ✅ Assigned hostname and port | ✅ [External domains](https://playit.gg/support/external-domain-cloudflare/) | ⚠️ Provider example timed out | ✅ Combined TCP+UDP |
+| [Localtonet](https://localtonet.com/pricing) | $0 (30 min) or about $2/month per active tunnel, billed hourly | ⚠️ Reserved with balance | ✅ [Domain managed in Localtonet](https://localtonet.com/documents/custom-domains) | ⚠️ [Raw TCP](https://localtonet.com/documents/using-localtonet-with-minecraft) | ✅ Combined TCP+UDP |
+| [Pinggy](https://pinggy.io/#pricing) | $0 (60 min) or $3/month | ⚠️ Reserved on Pro | ⚠️ [Pro with assigned port](https://pinggy.io/docs/http_tunnels/multi_port_forwarding/) | ⚠️ [Raw TCP](https://pinggy.io/quickstart/minecraft/) | ✅ Via Pinggy CLI |
+| [LocalXpose Pro](https://localxpose.io/pricing) | $8/month, billed yearly | ✅ Reserved port | ⚠️ [CNAME with reserved port](https://localxpose.io/docs/tutorials/access-localhost-keepass) | ⚠️ [Raw TCP](https://localxpose.io/docs/tunnels/tcp) | ✅ Supported |
+| [TCPShield](https://tcpshield.com/plans) | From $0 for Java | ✅ Protected hostname | ✅ [CNAME](https://docs.tcpshield.com/panel/dns-setup) | ✅ [Java list ping](https://docs.tcpshield.com/troubleshooting/invalid-hostname) | ⚠️ [Premium Bedrock](https://docs.tcpshield.com/premium-features/geyser) or [Sentry Tunnel](https://docs.tcpshield.com/vxlan/sentry-tunnel-general-setup) |
+| [Cloudflare Spectrum](https://developers.cloudflare.com/spectrum/protocols-per-plan/) | [Pro $25/month](https://www.cloudflare.com/plans/pro/) on monthly billing, plus usage | ✅ Fixed hostname and port | ✅ [Cloudflare zone](https://developers.cloudflare.com/spectrum/get-started/) | ✅ Minecraft Java app | ⚠️ Spectrum Enterprise |
 | Tovela | From $0 | ✅ Fixed hostname, ephemeral IP | ✅ Cloudflare DNS | ✅ Supported | ✅ Multiple TCP and UDP ports |
 
 ngrok documents [raw TCP forwarding for Minecraft and CNAME aliases](https://ngrok.com/docs/gateway/endpoints/tcp). Native HTTP/TLS domains start at $20/month. [ngrok pricing](https://ngrok.com/pricing)
 
-The Playit checks covered one free Java 1.21.11 tunnel and the [Premium example](https://playit.gg/support/external-domain-cloudflare/).
+The Playit checks covered one free Java 1.21.11 tunnel and the [Premium example](https://playit.gg/support/external-domain-cloudflare/). Ping results marked **Raw TCP** for Localtonet, Pinggy, and LocalXpose are inferred from their tunnel documentation.
+
+TCPShield's Java proxy needs a [publicly reachable backend](https://docs.tcpshield.com/miscellaneous/protect-a-home-hosted-server). Spectrum Pro supports one Minecraft Java app and one single-port TCP app with a Worker origin in beta. Generic TCP with an IP or DNS origin and UDP require [Spectrum Enterprise](https://developers.cloudflare.com/spectrum/protocols-per-plan/). [Spectrum billing](https://developers.cloudflare.com/billing/understand/usage-based-billing/)
 
 ### Monthly relay cost
 
