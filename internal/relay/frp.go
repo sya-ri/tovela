@@ -6,21 +6,21 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
-	"crypto/x509/pkix"
 	"embed"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
 	"math/big"
-	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
+	"slices"
 	"strings"
 	"time"
 
@@ -36,24 +36,24 @@ var ErrFrpcBlocked = errors.New("Windows blocked frpc")
 var frpFiles embed.FS
 
 type identity struct {
-	RequestID   string
-	Nonce       string
-	Token       string
-	Certificate []byte
-	PrivateKey  []byte
-	Deadline    time.Time
-	InstanceID  string
-	DNSZoneID   string
-	PublicIP    string
-	TCPPort     int
-	UDPPort     int
+	RequestID       string
+	Nonce           string
+	Token           string
+	Certificate     []byte
+	PrivateKey      []byte
+	Deadline        time.Time
+	InstanceID      string
+	DNSZoneID       string
+	PublicIP        string
+	PortMappingHash string `json:",omitempty"`
+	legacyPorts
 }
 
 func newIdentity(config Config) (identity, error) {
 	session := identity{
 		RequestID: requestID(), Nonce: randomHex(16), Token: randomHex(32),
-		Deadline: time.Now().UTC().Add(time.Duration(config.Hours) * time.Hour).Truncate(time.Second),
-		TCPPort:  config.TCPPort, UDPPort: config.UDPPort,
+		Deadline:        time.Now().UTC().Add(time.Duration(config.Hours) * time.Hour).Truncate(time.Second),
+		PortMappingHash: portMappingHash(config.Ports),
 	}
 	private, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -64,8 +64,9 @@ func newIdentity(config Config) (identity, error) {
 		return identity{}, err
 	}
 	certificate := &x509.Certificate{
-		SerialNumber: serial, Subject: pkix.Name{CommonName: config.Domain},
-		DNSNames: []string{config.Domain}, NotBefore: time.Now().Add(-5 * time.Minute), NotAfter: time.Now().Add(121 * 24 * time.Hour),
+		// The SAN carries the hostname. Repeating it in the subject and issuer can exceed the Windows credential limit.
+		SerialNumber: serial,
+		DNSNames:     []string{config.Domain}, NotBefore: time.Now().Add(-5 * time.Minute), NotAfter: time.Now().Add(121 * 24 * time.Hour),
 		BasicConstraintsValid: true, IsCA: true, KeyUsage: x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	}
@@ -82,13 +83,34 @@ func newIdentity(config Config) (identity, error) {
 	return session, nil
 }
 
-func serverStartup(session identity) string {
+// portMappingHash identifies the saved mappings without growing the credential with each port.
+func portMappingHash(ports []PortMapping) string {
+	hash := sha256.New()
+	for _, port := range ports {
+		fmt.Fprintf(hash, "%q %d %d\n", port.Protocol, port.LocalPort, port.PublicPort)
+	}
+	return hex.EncodeToString(hash.Sum(nil))
+}
+
+func (s identity) matchesPorts(ports []PortMapping) bool {
+	if s.PortMappingHash != "" {
+		return s.PortMappingHash == portMappingHash(ports)
+	}
+	return slices.Equal(s.legacyPorts.mappings(), ports)
+}
+
+func serverStartup(session identity, mappings []PortMapping) string {
 	archive := "frp_" + frpVersion + "_linux_amd64.tar.gz"
 	const checksum = "daf719b32ca2778770bb92955e231a07414d754378b9af328aa2642862479804"
-	ports := "[{single = 25565}]"
-	if session.UDPPort != 0 && session.UDPPort != 25565 {
-		ports = fmt.Sprintf("[{single = 25565}, {single = %d}]", session.UDPPort)
+	var allowed []string
+	seen := make(map[int]bool)
+	for _, port := range mappings {
+		if !seen[port.PublicPort] {
+			allowed = append(allowed, fmt.Sprintf("{single = %d}", port.PublicPort))
+			seen[port.PublicPort] = true
+		}
 	}
+	ports := "[" + strings.Join(allowed, ", ") + "]"
 	return fmt.Sprintf("#!/bin/sh\nset -eu\numask 077\n"+
 		"install -d -m 700 /opt/tovela\ncd /opt/tovela\n"+
 		"if ! command -v curl >/dev/null; then apt-get update && apt-get install -y --no-install-recommends curl ca-certificates; fi\n"+
@@ -114,9 +136,9 @@ func frpcConfig(config Config, session identity, ip, certPath string) string {
 	var result strings.Builder
 	fmt.Fprintf(&result, "serverAddr = %q\nserverPort = 7000\nloginFailExit = false\nauth.token = %q\n", ip, session.Token)
 	fmt.Fprintf(&result, "transport.tls.enable = true\ntransport.tls.trustedCaFile = %q\ntransport.tls.serverName = %q\n", filepath.ToSlash(certPath), config.Domain)
-	fmt.Fprintf(&result, "\n[[proxies]]\nname = \"minecraft-java\"\ntype = \"tcp\"\nlocalIP = \"127.0.0.1\"\nlocalPort = %d\nremotePort = 25565\n", config.TCPPort)
-	if config.UDPPort != 0 {
-		fmt.Fprintf(&result, "\n[[proxies]]\nname = \"udp-service\"\ntype = \"udp\"\nlocalIP = \"127.0.0.1\"\nlocalPort = %d\nremotePort = %d\n", config.UDPPort, config.UDPPort)
+	for _, port := range config.Ports {
+		fmt.Fprintf(&result, "\n[[proxies]]\nname = %q\ntype = %q\nlocalIP = \"127.0.0.1\"\nlocalPort = %d\nremotePort = %d\n",
+			port.proxyName(), port.Transport(), port.LocalPort, port.PublicPort)
 	}
 	return result.String()
 }
@@ -124,7 +146,7 @@ func frpcConfig(config Config, session identity, ip, certPath string) string {
 type tunnel struct {
 	cmd      *exec.Cmd
 	done     chan struct{}
-	udpReady chan struct{}
+	udpReady chan string
 	err      error
 }
 
@@ -185,18 +207,26 @@ func launchFrpc(executable string, config Config, session identity, ip string) (
 		return nil, err
 	}
 	cmd.Stderr = cmd.Stdout
-	t := &tunnel{cmd: cmd, done: make(chan struct{}), udpReady: make(chan struct{}, 1)}
+	t := &tunnel{cmd: cmd, done: make(chan struct{}), udpReady: make(chan string, len(config.Ports))}
 	if err := cmd.Start(); err != nil {
 		return nil, frpcExecutionError(err)
 	}
 	go func() {
+		pendingUDP := make(map[string]bool)
+		for _, port := range config.Ports {
+			if port.Protocol == UDP {
+				pendingUDP[port.proxyName()] = true
+			}
+		}
 		lines := bufio.NewScanner(logs)
 		for lines.Scan() {
 			line := lines.Text()
-			if strings.Contains(line, "[udp-service]") && strings.Contains(line, "start proxy success") {
-				select {
-				case t.udpReady <- struct{}{}:
-				default:
+			if strings.Contains(line, "start proxy success") {
+				for name := range pendingUDP {
+					if strings.Contains(line, "["+name+"]") {
+						t.udpReady <- name
+						delete(pendingUDP, name)
+					}
 				}
 			}
 		}
@@ -220,21 +250,37 @@ func (t *tunnel) stop() {
 }
 
 func (t *tunnel) waitReady(ctx context.Context, config Config, ip string) error {
-	udpReady := config.UDPPort == 0
-	address := net.JoinHostPort(ip, strconv.Itoa(25565))
+	registered := make(map[string]bool)
 	for {
 		select {
-		case <-t.udpReady:
-			udpReady = true
 		case <-t.done:
 			return fmt.Errorf(locale.T("The relay client exited: %v"), t.err)
 		default:
 		}
-		if udpReady && pingMinecraft(ctx, address, config.Domain, 25565) == nil {
+		for len(t.udpReady) > 0 {
+			registered[<-t.udpReady] = true
+		}
+
+		var pending *PortMapping
+		for _, port := range config.Ports {
+			if port.Protocol == UDP {
+				if !registered[port.proxyName()] {
+					pending = &port
+					break
+				}
+				continue
+			}
+			if port.probeTCP(ctx, ip, config.Domain, port.PublicPort) != nil {
+				pending = &port
+				break
+			}
+		}
+		if pending == nil {
 			return nil
 		}
 		if err := pause(ctx, 2*time.Second); err != nil {
-			return errors.New(locale.T("The public port did not return a Minecraft status. Check the GCE firewall and local server."))
+			return fmt.Errorf(locale.T("Public %s port %d did not become ready. Check the GCE firewall and local service."),
+				strings.ToUpper(pending.Transport()), pending.PublicPort)
 		}
 	}
 }

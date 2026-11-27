@@ -18,65 +18,37 @@ import (
 )
 
 func (v *view) openSettings() {
-	v.replace.SetChecked(false)
 	v.problem = ""
 	config := v.state.Config
 	domain := entry(config.Domain, "mc.example.com")
-	project := entry(config.Project, locale.T("Project ID"))
-	tcp := entry(strconv.Itoa(config.TCPPort), "25565")
-	udp := entry("", locale.T("Optional"))
-	if config.UDPPort != 0 {
-		udp.SetText(strconv.Itoa(config.UDPPort))
-	}
+	project := entry(config.Project, "")
+	ports := newPortEditor(config.Ports)
 	hours := entry(strconv.Itoa(config.Hours), "4")
-	zone := &widget.Select{Options: []string{"asia-northeast1-a", "asia-northeast1-b", "asia-northeast1-c"}, PlaceHolder: locale.T("Choose a zone")}
-	zone.SetSelected(config.Zone)
+	picker := newZonePicker(v.window, config.Zone)
+	zone := picker.button
+
+	var zones []string
+	var closed bool
 	network := entry(config.Network, "default")
 	cfZone := entry(config.CloudflareZone, locale.T("Automatic"))
 	googleID := entry(config.GoogleClientID, locale.T("Client ID"))
 	cfID := entry(config.CloudflareClientID, locale.T("Client ID"))
 
-	form := widget.NewForm(
-		widget.NewFormItem(locale.T("Hostname"), domain),
-		widget.NewFormItem(locale.T("Google Cloud project"), project),
-		widget.NewFormItem(locale.T("Local TCP port"), tcp),
-		widget.NewFormItem(locale.T("UDP port"), udp),
-		widget.NewFormItem(locale.T("Duration (h)"), hours),
-	)
-	advanced := widget.NewAccordion(widget.NewAccordionItem(locale.T("Advanced"), widget.NewForm(
-		widget.NewFormItem(locale.T("Google Cloud zone"), zone),
-		widget.NewFormItem(locale.T("VPC network"), network),
-		widget.NewFormItem(locale.T("Cloudflare zone"), cfZone),
-		widget.NewFormItem(locale.T("Google OAuth client ID"), googleID),
-		widget.NewFormItem(locale.T("Cloudflare OAuth client ID"), cfID),
-	)))
-	inputs := []fyne.Disableable{domain, project, tcp, udp, hours, zone, network, cfZone, googleID, cfID}
+	inputs := []fyne.Disableable{domain, project, hours, network, cfZone, googleID, cfID}
 	readConfig := func() (relay.Config, error) {
-		update := relay.Config{
-			Project: project.Text, Zone: zone.Selected, Network: strings.TrimSpace(network.Text),
-			Domain: domain.Text, CloudflareZone: cfZone.Text,
+		duration, err := strconv.Atoi(strings.TrimSpace(hours.Text))
+		if err != nil {
+			return relay.Config{}, errors.New(locale.T("Enter a valid auto-delete interval."))
+		}
+		mappings, err := ports.mappings()
+		if err != nil {
+			return relay.Config{}, err
+		}
+		return relay.Config{
+			Project: project.Text, Zone: picker.selected(), Network: strings.TrimSpace(network.Text),
+			Domain: domain.Text, CloudflareZone: cfZone.Text, Ports: mappings, Hours: duration,
 			GoogleClientID: googleID.Text, CloudflareClientID: cfID.Text,
-		}
-		for _, field := range []struct {
-			entry   *widget.Entry
-			invalid string
-			value   *int
-		}{
-			{tcp, "Enter a valid local TCP port.", &update.TCPPort},
-			{udp, "Enter a valid UDP port.", &update.UDPPort},
-			{hours, "Enter a valid duration.", &update.Hours},
-		} {
-			text := strings.TrimSpace(field.entry.Text)
-			if field.entry == udp && text == "" {
-				continue
-			}
-			number, err := strconv.Atoi(text)
-			if err != nil {
-				return relay.Config{}, errors.New(locale.T(field.invalid))
-			}
-			*field.value = number
-		}
-		return update, nil
+		}, nil
 	}
 
 	perform := func(provider string, saved func()) {
@@ -104,56 +76,208 @@ func (v *view) openSettings() {
 		}, saved)
 	}
 
-	google := widget.NewButton("Google", func() { perform("google", nil) })
-	cloudflare := widget.NewButton("Cloudflare", func() { perform("cloudflare", nil) })
+	googleReady := func() bool {
+		return v.state.GoogleReady && strings.TrimSpace(googleID.Text) == v.state.Config.GoogleClientID
+	}
+	canLoad := func() bool {
+		return v.state.Phase == "idle" && googleReady() && strings.TrimSpace(project.Text) != ""
+	}
+	loadZones := func(after func()) {
+		if closed || !canLoad() || v.busy || v.closing {
+			return
+		}
+		key := locationKey{strings.TrimSpace(project.Text), strings.TrimSpace(googleID.Text)}
+		v.loadLocations(key, func(choices locationChoices) {
+			if closed {
+				return
+			}
+			zones = choices.zones
+			if len(zones) > 0 {
+				latencies := choices.latencies
+				picker.setOptions(zones, latencies)
+				if picker.selected() == "" {
+					picker.selectZone(fastestZone(zones, latencies))
+				}
+			}
+			v.problem = ""
+			if choices.err != nil && (len(zones) == 0 || picker.selected() == "") {
+				v.problem = choices.err.Error()
+			}
+			v.render()
+			if after != nil && picker.selected() != "" {
+				after()
+			}
+		})
+	}
+
+	project.OnSubmitted = func(string) { loadZones(nil) }
+
+	google := widget.NewButtonWithIcon("", googleIcon, func() {
+		perform("google", func() {
+			clear(v.locations)
+			loadZones(nil)
+		})
+	})
+	cloudflare := widget.NewButtonWithIcon("", cloudflareIcon, func() { perform("cloudflare", nil) })
+	google.Alignment = widget.ButtonAlignLeading
+	cloudflare.Alignment = widget.ButtonAlignLeading
+	cloudflareButton := container.NewThemeOverride(cloudflare, cloudflareButtonTheme{cloudflare.Theme()})
+	form := settingsForm(
+		settingRow{label: "Relay"},
+		settingRow{"Hostname", domain},
+		settingRow{"Project ID", project},
+		settingRow{"Relay location", picker.content},
+		settingRow{"Auto-delete after (h)", hours},
+		settingRow{label: "Network"},
+		settingRow{"Ports", ports.content},
+		settingRow{label: "Accounts"},
+		settingRow{"Google", google},
+		settingRow{"Cloudflare", cloudflareButton},
+	)
+	advanced := widget.NewAccordion(widget.NewAccordionItem(locale.T("Advanced"), settingsForm(
+		settingRow{"VPC network", network},
+		settingRow{"Cloudflare zone", cfZone},
+		settingRow{"Google OAuth client ID", googleID},
+		settingRow{"Cloudflare OAuth client ID", cfID},
+	)))
 	message := widget.NewLabel("")
 	message.Wrapping = fyne.TextWrapWord
-	formContent := container.NewVScroll(container.NewVBox(form, advanced, container.NewGridWithColumns(2, google, cloudflare)))
 	ok := widget.NewButtonWithIcon(locale.T("Save"), theme.ConfirmIcon(), nil)
 	ok.Importance = widget.HighImportance
 	closeButton := widget.NewButton(locale.T("Close"), nil)
-	footer := container.NewVBox(message, container.NewHBox(layout.NewSpacer(), closeButton, ok))
-	content := container.NewBorder(nil, footer, nil, nil, formContent)
-	d := dialog.NewCustomWithoutButtons(locale.T("Settings"), content, v.window)
+	deleteProfile := widget.NewButtonWithIcon(locale.T("Delete profile"), theme.DeleteIcon(), nil)
+	deleteProfile.Importance = widget.LowImportance
+	actions := container.NewBorder(nil, nil, deleteProfile, container.NewHBox(closeButton, ok))
+	content := container.NewVScroll(container.NewVBox(form, advanced, message, actions))
+	d := dialog.NewCustomWithoutButtons(locale.T("Settings"), container.NewClip(content), v.window)
 	closeButton.OnTapped = d.Hide
-	ok.OnTapped = func() { perform("", d.Hide) }
+	profileID := v.state.ActiveProfile
+	deleteProfile.OnTapped = func() {
+		name := config.Domain
+		if name == "" {
+			name = locale.T("New relay")
+		}
+		message := widget.NewLabel(fmt.Sprintf(locale.T("Delete the profile for %s?"), name))
+		message.Wrapping = fyne.TextWrapBreak
+		confirm := dialog.NewCustomConfirm(locale.T("Delete profile"), locale.T("Delete"), locale.T("Cancel"), message, func(approved bool) {
+			if approved {
+				v.run(func(context.Context) error { return v.service.DeleteProfile(profileID) }, d.Hide)
+			}
+		}, v.window)
+		confirm.SetConfirmImportance(widget.DangerImportance)
+		confirm.Resize(fyne.NewSize(min(420, v.window.Canvas().Size().Width-32), confirm.MinSize().Height+24))
+		confirm.Show()
+	}
+	save := func() { perform("", d.Hide) }
+	ok.OnTapped = func() {
+		if picker.selected() == "" && canLoad() && len(zones) == 0 {
+			loadZones(save)
+			return
+		}
+		save()
+	}
 
 	v.settingsChanged = func() {
 		editable := v.state.Phase == "idle" && !v.busy && !v.closing
 		for _, input := range inputs {
 			setEnabled(input, editable)
 		}
-		v.updateLogin(google, googleID, v.state.GoogleReady, "Google")
-		v.updateLogin(cloudflare, cfID, v.state.CloudflareReady, "Cloudflare")
+		ports.setEnabled(editable)
+		ready := googleReady()
+		if picker.selected() == "" {
+			placeholder := "Choose a zone"
+			if !ready {
+				placeholder = "Sign in to Google"
+			}
+			zone.caption.SetText(locale.T(placeholder))
+		}
+		setEnabled(zone, editable && ready && len(zones) > 0)
+		v.updateLogin(google, googleID, ready)
+		cfReady := v.state.CloudflareReady && strings.TrimSpace(cfID.Text) == v.state.Config.CloudflareClientID
+		v.updateLogin(cloudflare, cfID, cfReady)
 		setEnabled(ok, editable)
+		setEnabled(deleteProfile, editable)
 		text := v.problem
 		message.Importance = widget.DangerImportance
 		if v.busy {
 			message.Importance = widget.LowImportance
 			text = locale.T("Working…")
 		}
+		revealError := !v.busy && text != "" && message.Text != text
 		message.SetText(text)
 		setVisible(message, text != "")
+		if revealError {
+			content.ScrollToBottom()
+		}
 	}
-	googleID.OnChanged = func(string) { v.updateLogin(google, googleID, false, "Google") }
-	cfID.OnChanged = func(string) { v.updateLogin(cloudflare, cfID, false, "Cloudflare") }
+	projectID, clientID := strings.TrimSpace(project.Text), strings.TrimSpace(googleID.Text)
+	project.OnChanged = func(value string) {
+		trimmed := strings.TrimSpace(value)
+		if trimmed != projectID {
+			projectID = trimmed
+			zones = nil
+			if projectID == config.Project && config.Zone != "" {
+				picker.setOptions([]string{config.Zone}, nil)
+				picker.selectZone(config.Zone)
+			} else {
+				picker.setOptions(nil, nil)
+			}
+		}
+		v.settingsChanged()
+	}
+	googleID.OnChanged = func(value string) {
+		trimmed := strings.TrimSpace(value)
+		if trimmed != clientID {
+			clientID = trimmed
+			zones = nil
+		}
+		v.settingsChanged()
+	}
+	cfID.OnChanged = func(string) { v.settingsChanged() }
 	d.SetOnClosed(func() {
+		closed = true
 		v.settingsChanged = nil
 		v.render()
 	})
 	v.settingsChanged()
-	d.Resize(v.window.Canvas().Size().Subtract(fyne.NewSize(64, 64)))
+	canvasSize := v.window.Canvas().Size()
+	horizontalInset := min(64, max(24, canvasSize.Width-490))
+	d.Resize(canvasSize.Subtract(fyne.NewSize(horizontalInset, 24)))
 	d.Show()
+	loadZones(nil)
 }
 
-func (v *view) updateLogin(btn *widget.Button, id *widget.Entry, ready bool, provider string) {
-	btn.SetText(fmt.Sprintf(locale.T("Sign in to %s"), provider))
-	btn.SetIcon(theme.LoginIcon())
+func (v *view) updateLogin(btn *widget.Button, id *widget.Entry, ready bool) {
+	label := "Sign in"
 	if ready {
-		btn.SetText(fmt.Sprintf(locale.T("%s connected"), provider))
-		btn.SetIcon(theme.ConfirmIcon())
+		label = "Connected"
 	}
+	btn.SetText(locale.T(label))
 	setEnabled(btn, !v.busy && !v.closing && strings.TrimSpace(id.Text) != "")
+}
+
+type settingRow struct {
+	label   string
+	control fyne.CanvasObject
+}
+
+func settingsForm(rows ...settingRow) *fyne.Container {
+	cells := make([]fyne.CanvasObject, 0, 2*len(rows))
+	for i, row := range rows {
+		if row.control != nil {
+			cells = append(cells, widget.NewLabel(locale.T(row.label)), row.control)
+			continue
+		}
+
+		heading := widget.NewLabelWithStyle(locale.T(row.label), fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+		heading.SizeName = theme.SizeNameSubHeadingText
+		var label fyne.CanvasObject = heading
+		if i > 0 {
+			label = container.New(layout.NewCustomPaddedLayout(12, 0, 0, 0), heading)
+		}
+		cells = append(cells, label, layout.NewSpacer())
+	}
+	return container.New(layout.NewFormLayout(), cells...)
 }
 
 func entry(value, placeholder string) *widget.Entry {

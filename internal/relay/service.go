@@ -4,11 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"sync"
 	"time"
 
@@ -41,7 +39,7 @@ func newService(path string, defaults Config) (*Service, error) {
 	}
 	s := &Service{configPath: path, state: State{Config: config, Phase: "idle"}}
 	s.refreshLogins()
-	if config.validate() == nil {
+	if config.validateRelay() == nil {
 		var session identity
 		if err := readCredential(config.sessionKey(), &session); err == nil {
 			s.state.Phase = "recoverable"
@@ -135,7 +133,7 @@ func (s *Service) Start(ctx context.Context, replaceDNS bool) (err error) {
 		return nil
 	}
 	config := state.Config
-	if err := config.validate(); err != nil {
+	if err := config.validateRelay(); err != nil {
 		return err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
@@ -181,8 +179,16 @@ func (s *Service) Start(ctx context.Context, replaceDNS bool) (err error) {
 	} else if !errors.Is(stored, keyring.ErrNotFound) {
 		return fmt.Errorf(locale.T("open the operating system credential store: %w"), stored)
 	}
-	if err := pingMinecraft(ctx, net.JoinHostPort("127.0.0.1", strconv.Itoa(config.TCPPort)), "localhost", config.TCPPort); err != nil {
-		return fmt.Errorf(locale.T("Check your local Minecraft Java server on port %d: %w"), config.TCPPort, err)
+	for _, port := range config.Ports {
+		if port.Protocol == UDP {
+			continue
+		}
+		if err := port.probeTCP(ctx, "127.0.0.1", "localhost", port.LocalPort); err != nil {
+			if port.Protocol == MinecraftJava {
+				return fmt.Errorf(locale.T("Check your local Minecraft Java server on port %d: %w"), port.LocalPort, err)
+			}
+			return fmt.Errorf(locale.T("Check your local TCP service on port %d: %w"), port.LocalPort, err)
+		}
 	}
 	frpcPath, err = prepareFrpc(ctx)
 	if err != nil {
@@ -223,7 +229,7 @@ func (s *Service) Start(ctx context.Context, replaceDNS bool) (err error) {
 		session = identity{}
 		pending = false
 	}
-	if pending && (session.TCPPort != config.TCPPort || session.UDPPort != config.UDPPort) {
+	if pending && !session.matchesPorts(config.Ports) {
 		return errors.New(locale.T("The existing relay uses different ports. Stop it first."))
 	}
 	if _, err := dns.ensureAvailable(ctx, cfEndpoint+"/zones/"+zoneID+"/dns_records", session, replaceDNS); err != nil {
@@ -231,6 +237,9 @@ func (s *Service) Start(ctx context.Context, replaceDNS bool) (err error) {
 	}
 	if vm == nil {
 		if !pending {
+			if err := gce.checkMachineType(ctx); err != nil {
+				return err
+			}
 			session, err = newIdentity(config)
 			if err != nil {
 				return err

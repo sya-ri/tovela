@@ -37,10 +37,11 @@ func NewDesktop(googleID, cloudflareID string) (*Desktop, error) {
 	if err != nil {
 		return nil, err
 	}
-	root := filepath.Join(dir, "tovela", "profiles")
-	desktop := &Desktop{
-		root: root, defaults: DefaultConfig(googleID, cloudflareID), profiles: make(map[string]*Service),
-	}
+	return openDesktop(filepath.Join(dir, "tovela", "profiles"), DefaultConfig(googleID, cloudflareID))
+}
+
+func openDesktop(root string, defaults Config) (*Desktop, error) {
+	desktop := &Desktop{root: root, defaults: defaults, profiles: make(map[string]*Service)}
 	dirs, err := os.ReadDir(root)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
@@ -49,7 +50,13 @@ func NewDesktop(googleID, cloudflareID string) (*Desktop, error) {
 		if !entry.IsDir() {
 			continue
 		}
-		profile, err := newService(desktop.path(entry.Name()), desktop.defaults)
+		path := desktop.path(entry.Name())
+		if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+			continue
+		} else if err != nil {
+			return nil, err
+		}
+		profile, err := newService(path, desktop.defaults)
 		if err != nil {
 			return nil, err
 		}
@@ -105,7 +112,7 @@ func (d *Desktop) AddProfile() error {
 	defer d.mu.Unlock()
 	current := d.profiles[d.active].GetState().Config
 	config := DefaultConfig(current.GoogleClientID, current.CloudflareClientID)
-	config.Project, config.Zone, config.Network = current.Project, current.Zone, current.Network
+	config.Project, config.Network = current.Project, current.Network
 	id := requestID()
 	path := d.path(id)
 	if err := saveConfig(path, config); err != nil {
@@ -116,6 +123,42 @@ func (d *Desktop) AddProfile() error {
 		return err
 	}
 	d.profiles[id], d.active = profile, id
+	return nil
+}
+
+// DeleteProfile removes an idle profile after its relay has been stopped.
+func (d *Desktop) DeleteProfile(id string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	profile := d.profiles[id]
+	if profile == nil {
+		return errors.New(locale.T("This relay profile does not exist."))
+	}
+	if !profile.operation.TryLock() {
+		return errors.New(locale.T("An operation is already in progress."))
+	}
+	defer profile.operation.Unlock()
+	if profile.GetState().Phase != "idle" {
+		return errors.New(locale.T("Stop the relay before deleting this profile."))
+	}
+	if err := os.Remove(profile.configPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	// Other folders or files in the profile directory are left alone.
+	_ = os.Remove(filepath.Dir(profile.configPath))
+	delete(d.profiles, id)
+	if len(d.profiles) == 0 {
+		replacement := &Service{configPath: d.path("default"), state: State{Config: d.defaults, Phase: "idle"}}
+		replacement.refreshLogins()
+		d.profiles["default"], d.active = replacement, "default"
+	} else if d.active == id {
+		d.active = ""
+		for next := range d.profiles {
+			if d.active == "" || next < d.active {
+				d.active = next
+			}
+		}
+	}
 	return nil
 }
 

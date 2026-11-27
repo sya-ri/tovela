@@ -30,6 +30,13 @@ func Theme() fyne.Theme {
 	return palette{theme.DefaultTheme(), locale.Language() == "ja"}
 }
 
+func (p palette) Size(name fyne.ThemeSizeName) float32 {
+	if name == theme.SizeNamePadding {
+		return 8
+	}
+	return p.Theme.Size(name)
+}
+
 func (p palette) Font(style fyne.TextStyle) fyne.Resource {
 	if !p.useJapaneseFont || style.Monospace || style.Symbol {
 		return p.Theme.Font(style)
@@ -53,6 +60,12 @@ func (p palette) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) colo
 			return color.NRGBA{R: 28, G: 27, B: 42, A: 255}
 		case theme.ColorNameSuccess:
 			return color.NRGBA{R: 148, G: 218, B: 176, A: 255}
+		case theme.ColorNameSeparator:
+			return color.NRGBA{R: 67, G: 65, B: 84, A: 255}
+		case theme.ColorNameError:
+			return color.NRGBA{R: 255, G: 173, B: 187, A: 255}
+		case theme.ColorNameForegroundOnError:
+			return color.NRGBA{R: 42, G: 24, B: 33, A: 255}
 		}
 	} else {
 		switch name {
@@ -68,6 +81,8 @@ func (p palette) Color(name fyne.ThemeColorName, variant fyne.ThemeVariant) colo
 			return color.NRGBA{R: 36, G: 88, B: 58, A: 255}
 		case theme.ColorNameWarning:
 			return color.NRGBA{R: 127, G: 76, B: 15, A: 255}
+		case theme.ColorNameError:
+			return color.NRGBA{R: 163, G: 34, B: 51, A: 255}
 		}
 	}
 	return p.Theme.Color(name, variant)
