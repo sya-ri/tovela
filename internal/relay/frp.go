@@ -6,10 +6,11 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
-	"crypto/x509/pkix"
 	"embed"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -35,24 +36,24 @@ var ErrFrpcBlocked = errors.New("Windows blocked frpc")
 var frpFiles embed.FS
 
 type identity struct {
-	RequestID   string
-	Nonce       string
-	Token       string
-	Certificate []byte
-	PrivateKey  []byte
-	Deadline    time.Time
-	InstanceID  string
-	DNSZoneID   string
-	PublicIP    string
-	Ports       []PortMapping
+	RequestID       string
+	Nonce           string
+	Token           string
+	Certificate     []byte
+	PrivateKey      []byte
+	Deadline        time.Time
+	InstanceID      string
+	DNSZoneID       string
+	PublicIP        string
+	PortMappingHash string `json:",omitempty"`
 	legacyPorts
 }
 
 func newIdentity(config Config) (identity, error) {
 	session := identity{
 		RequestID: requestID(), Nonce: randomHex(16), Token: randomHex(32),
-		Deadline: time.Now().UTC().Add(time.Duration(config.Hours) * time.Hour).Truncate(time.Second),
-		Ports:    slices.Clone(config.Ports),
+		Deadline:        time.Now().UTC().Add(time.Duration(config.Hours) * time.Hour).Truncate(time.Second),
+		PortMappingHash: portMappingHash(config.Ports),
 	}
 	private, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -63,8 +64,9 @@ func newIdentity(config Config) (identity, error) {
 		return identity{}, err
 	}
 	certificate := &x509.Certificate{
-		SerialNumber: serial, Subject: pkix.Name{CommonName: config.Domain},
-		DNSNames: []string{config.Domain}, NotBefore: time.Now().Add(-5 * time.Minute), NotAfter: time.Now().Add(121 * 24 * time.Hour),
+		// The SAN carries the hostname. Repeating it in the subject and issuer can exceed the Windows credential limit.
+		SerialNumber: serial,
+		DNSNames:     []string{config.Domain}, NotBefore: time.Now().Add(-5 * time.Minute), NotAfter: time.Now().Add(121 * 24 * time.Hour),
 		BasicConstraintsValid: true, IsCA: true, KeyUsage: x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
 		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	}
@@ -81,19 +83,28 @@ func newIdentity(config Config) (identity, error) {
 	return session, nil
 }
 
-func (s identity) mappings() []PortMapping {
-	if s.Ports != nil {
-		return s.Ports
+// portMappingHash identifies the saved mappings without growing the credential with each port.
+func portMappingHash(ports []PortMapping) string {
+	hash := sha256.New()
+	for _, port := range ports {
+		fmt.Fprintf(hash, "%q %d %d\n", port.Protocol, port.LocalPort, port.PublicPort)
 	}
-	return s.legacyPorts.mappings()
+	return hex.EncodeToString(hash.Sum(nil))
 }
 
-func serverStartup(session identity) string {
+func (s identity) matchesPorts(ports []PortMapping) bool {
+	if s.PortMappingHash != "" {
+		return s.PortMappingHash == portMappingHash(ports)
+	}
+	return slices.Equal(s.legacyPorts.mappings(), ports)
+}
+
+func serverStartup(session identity, mappings []PortMapping) string {
 	archive := "frp_" + frpVersion + "_linux_amd64.tar.gz"
 	const checksum = "daf719b32ca2778770bb92955e231a07414d754378b9af328aa2642862479804"
 	var allowed []string
 	seen := make(map[int]bool)
-	for _, port := range session.mappings() {
+	for _, port := range mappings {
 		if !seen[port.PublicPort] {
 			allowed = append(allowed, fmt.Sprintf("{single = %d}", port.PublicPort))
 			seen[port.PublicPort] = true

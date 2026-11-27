@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"slices"
 	"sync"
 	"time"
 
@@ -230,7 +229,7 @@ func (s *Service) Start(ctx context.Context, replaceDNS bool) (err error) {
 		session = identity{}
 		pending = false
 	}
-	if pending && !slices.Equal(session.mappings(), config.Ports) {
+	if pending && !session.matchesPorts(config.Ports) {
 		return errors.New(locale.T("The existing relay uses different ports. Stop it first."))
 	}
 	if _, err := dns.ensureAvailable(ctx, cfEndpoint+"/zones/"+zoneID+"/dns_records", session, replaceDNS); err != nil {

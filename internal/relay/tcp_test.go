@@ -2,12 +2,13 @@ package relay
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -40,11 +41,11 @@ func TestRawTCPUsesPublicPortAndAcceptsAnHTTPService(t *testing.T) {
 	if err := web.probeTCP(t.Context(), host, config.Domain, port); err != nil {
 		t.Fatalf("could not probe the local HTTP service over TCP: %v", err)
 	}
-	session := identity{Ports: config.Ports}
+	session := identity{}
 	client := frpcConfig(config, session, "192.0.2.1", "server.crt")
 	if !strings.Contains(client, "localPort = "+portText+"\nremotePort = 80") ||
 		strings.Count(client, "[[proxies]]") != 4 ||
-		!strings.Contains(serverStartup(session), "allowPorts = [{single = 25565}, {single = 80}, {single = 19132}]") {
+		!strings.Contains(serverStartup(session, config.Ports), "allowPorts = [{single = 25565}, {single = 80}, {single = 19132}]") {
 		t.Fatal("the relay configuration did not use all public TCP and UDP ports")
 	}
 	config.Ports = append(config.Ports, PortMapping{MinecraftJava, 25566, 80})
@@ -81,7 +82,49 @@ func TestDecodeLegacySessionPorts(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []PortMapping{{MinecraftJava, 25570, 25565}, {UDP, 19132, 19132}}
-	if session.RequestID != "old" || !slices.Equal(session.mappings(), want) {
+	if session.RequestID != "old" || !session.matchesPorts(want) {
 		t.Fatalf("legacy session decoded as %+v, want %+v", session, want)
+	}
+}
+
+func TestSavedSessionFitsWindowsCredentialLimitWithManyPorts(t *testing.T) {
+	config := DefaultConfig("", "")
+	config.Domain = strings.Repeat(strings.Repeat("a", 63)+".", 3) + strings.Repeat("b", 61)
+	for port := 30000; port < 30100; port++ {
+		config.Ports = append(config.Ports, PortMapping{TCP, port, port}, PortMapping{UDP, port, port})
+	}
+	session, err := newIdentity(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	session.InstanceID = "18446744073709551615"
+	session.DNSZoneID = strings.Repeat("a", 32)
+	session.PublicIP = "203.0.113.255"
+	data, err := json.Marshal(session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) > 2560 {
+		t.Fatalf("saved session is %d bytes, exceeding the Windows credential limit", len(data))
+	}
+	var saved identity
+	if err := json.Unmarshal(data, &saved); err != nil {
+		t.Fatal(err)
+	}
+	pair, err := tls.X509KeyPair(saved.Certificate, saved.PrivateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := x509.NewCertPool()
+	roots.AddCert(pair.Leaf)
+	if _, err := pair.Leaf.Verify(x509.VerifyOptions{DNSName: config.Domain, Roots: roots}); err != nil {
+		t.Fatalf("saved certificate does not verify for the hostname: %v", err)
+	}
+	if !saved.matchesPorts(config.Ports) {
+		t.Fatal("saved session does not match the original mappings")
+	}
+	config.Ports[1].LocalPort++
+	if saved.matchesPorts(config.Ports) {
+		t.Fatal("saved session matches changed mappings")
 	}
 }

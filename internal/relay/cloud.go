@@ -196,7 +196,7 @@ func (c compute) create(ctx context.Context, session identity) error {
 			"network":       "global/networks/" + c.config.Network,
 			"accessConfigs": []any{map[string]string{"name": "External NAT", "type": "ONE_TO_ONE_NAT"}},
 		}},
-		"metadata": map[string]any{"items": []map[string]string{{"key": "startup-script", "value": serverStartup(session)}}},
+		"metadata": map[string]any{"items": []map[string]string{{"key": "startup-script", "value": serverStartup(session, c.config.Ports)}}},
 		"scheduling": map[string]any{
 			"terminationTime": session.Deadline.Format(time.RFC3339), "instanceTerminationAction": "DELETE",
 		},
