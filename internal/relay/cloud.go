@@ -70,8 +70,6 @@ func request(ctx context.Context, client *http.Client, method, address string, p
 	return json.NewDecoder(io.LimitReader(res.Body, 8<<20)).Decode(out)
 }
 
-const relayMachineType = "e2-micro"
-
 type compute struct {
 	client *http.Client
 	config Config
@@ -171,9 +169,9 @@ func (c compute) wait(ctx context.Context, op operation) error {
 }
 
 func (c compute) checkMachineType(ctx context.Context) error {
-	err := request(ctx, c.client, http.MethodGet, c.endpoint()+"/machineTypes/"+relayMachineType, nil, nil)
+	err := request(ctx, c.client, http.MethodGet, c.endpoint()+"/machineTypes/"+c.config.RelayMachineType(), nil, nil)
 	if isHTTP(err, http.StatusNotFound) {
-		return fmt.Errorf(locale.T("Google Cloud could not find %s in zone %s."), relayMachineType, c.config.Zone)
+		return fmt.Errorf(locale.T("Google Cloud could not find %s in zone %s."), c.config.RelayMachineType(), c.config.Zone)
 	}
 	if err != nil {
 		return fmt.Errorf(locale.T("Could not check Google Cloud zone %s: %w"), c.config.Zone, err)
@@ -184,7 +182,7 @@ func (c compute) checkMachineType(ctx context.Context) error {
 func (c compute) create(ctx context.Context, session identity) error {
 	payload := map[string]any{
 		"name":            c.config.name(),
-		"machineType":     "zones/" + c.config.Zone + "/machineTypes/" + relayMachineType,
+		"machineType":     "zones/" + c.config.Zone + "/machineTypes/" + c.config.RelayMachineType(),
 		"labels":          map[string]string{"managed-by": "tovela", "relay": c.config.name(), "session": session.Nonce},
 		"serviceAccounts": []any{},
 		"tags":            map[string]any{"items": []string{"tovela"}},

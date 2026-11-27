@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/sya-ri/tovela/internal/locale"
@@ -17,6 +18,11 @@ import (
 const credentialService = "tovela"
 
 const DefaultTCPPort = 25565
+const DefaultMachineType = "e2-micro"
+
+func MachineTypes() []string {
+	return []string{DefaultMachineType, "e2-small", "e2-medium", "e2-standard-2"}
+}
 
 var (
 	projectPattern  = regexp.MustCompile("^[a-z][a-z0-9-]{4,28}[a-z0-9]$")
@@ -26,6 +32,7 @@ var (
 )
 
 type Config struct {
+	MachineType        string
 	Project            string
 	Zone               string
 	Network            string
@@ -39,12 +46,20 @@ type Config struct {
 
 func DefaultConfig(googleID, cloudflareID string) Config {
 	return Config{
-		Network: "default", Hours: 4, GoogleClientID: googleID, CloudflareClientID: cloudflareID,
+		MachineType: DefaultMachineType, Network: "default", Hours: 4, GoogleClientID: googleID, CloudflareClientID: cloudflareID,
 		Ports: (legacyPorts{}).mappings(),
 	}
 }
 
+func (c Config) RelayMachineType() string {
+	if c.MachineType == "" {
+		return DefaultMachineType
+	}
+	return c.MachineType
+}
+
 func (c *Config) normalize() {
+	c.MachineType = c.RelayMachineType()
 	c.Domain = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(c.Domain)), ".")
 	c.CloudflareZone = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(c.CloudflareZone)), ".")
 	c.Project = strings.TrimSpace(c.Project)
@@ -54,6 +69,9 @@ func (c *Config) normalize() {
 }
 
 func (c Config) validate() error {
+	if !slices.Contains(MachineTypes(), c.RelayMachineType()) {
+		return errors.New(locale.T("Choose a supported machine type."))
+	}
 	if !projectPattern.MatchString(c.Project) || !resourcePattern.MatchString(c.Network) {
 		return errors.New(locale.T("Enter a valid Google Cloud project ID and VPC network name."))
 	}
@@ -140,7 +158,7 @@ func (c Config) oauth(provider string) (*oauth2.Config, string, error) {
 	case "google":
 		cfg.ClientID = c.GoogleClientID
 		cfg.Endpoint = oauth2.Endpoint{AuthURL: "https://accounts.google.com/o/oauth2/v2/auth", TokenURL: "https://oauth2.googleapis.com/token", AuthStyle: oauth2.AuthStyleInParams}
-		cfg.Scopes = []string{"https://www.googleapis.com/auth/compute"}
+		cfg.Scopes = []string{"https://www.googleapis.com/auth/compute", "https://www.googleapis.com/auth/monitoring.read"}
 	case "cloudflare":
 		cfg.ClientID = c.CloudflareClientID
 		cfg.Endpoint = oauth2.Endpoint{AuthURL: "https://dash.cloudflare.com/oauth2/auth", TokenURL: "https://dash.cloudflare.com/oauth2/token", AuthStyle: oauth2.AuthStyleInParams}

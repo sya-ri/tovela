@@ -21,7 +21,7 @@ func reply(code int, body string) (*http.Response, error) {
 }
 
 func TestCreateRetriesWithOneVMNameAndRequestID(t *testing.T) {
-	config := Config{Project: "test-project", Zone: "southamerica-east1-a", Network: "default", Domain: "mc.example.com"}
+	config := Config{Project: "test-project", Zone: "southamerica-east1-a", Network: "default", Domain: "mc.example.com", MachineType: "e2-medium"}
 	session := identity{RequestID: requestID(), Nonce: "same-session", Deadline: time.Now().UTC().Truncate(time.Second).Add(4 * time.Hour)}
 	calls := 0
 	client := &http.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
@@ -46,7 +46,7 @@ func TestCreateRetriesWithOneVMNameAndRequestID(t *testing.T) {
 		if vm.Name != config.name() || vm.Labels["session"] != session.Nonce ||
 			vm.Scheduling["instanceTerminationAction"] != "DELETE" ||
 			vm.Scheduling["terminationTime"] != session.Deadline.Format(time.RFC3339) ||
-			vm.MachineType != "zones/southamerica-east1-a/machineTypes/e2-micro" ||
+			vm.MachineType != "zones/southamerica-east1-a/machineTypes/e2-medium" ||
 			len(vm.Disks) != 1 || !vm.Disks[0].AutoDelete ||
 			vm.Disks[0].InitializeParams.DiskType != "zones/southamerica-east1-a/diskTypes/pd-standard" {
 			t.Fatalf("incorrect VM identity or cleanup configuration: %+v", vm)
@@ -71,9 +71,9 @@ func TestCheckMachineTypeUsesSelectedZone(t *testing.T) {
 		"unauthorized": http.StatusForbidden,
 	} {
 		t.Run(name, func(t *testing.T) {
-			config := Config{Project: "test-project", Zone: "europe-west2-a"}
+			config := Config{Project: "test-project", Zone: "europe-west2-a", MachineType: "e2-standard-2"}
 			client := &http.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
-				if r.Method != http.MethodGet || r.URL.Path != "/compute/v1/projects/test-project/zones/europe-west2-a/machineTypes/e2-micro" {
+				if r.Method != http.MethodGet || r.URL.Path != "/compute/v1/projects/test-project/zones/europe-west2-a/machineTypes/e2-standard-2" {
 					t.Fatalf("unexpected machine type request: %s %s", r.Method, r.URL)
 				}
 				return reply(status, `{}`)

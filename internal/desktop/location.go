@@ -3,6 +3,7 @@ package desktop
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"time"
 
@@ -21,7 +22,7 @@ type locationKey struct {
 }
 
 type locationChoices struct {
-	zones      []string
+	zones      map[string][]string
 	latencies  map[string]time.Duration
 	err        error
 	retryAfter time.Time
@@ -41,7 +42,9 @@ func (v *view) loadLocations(key locationKey, show func(locationChoices)) {
 			choices.zones, choices.err = v.service.RelayZones(ctx, key.project, key.googleID)
 		}
 		if choices.err == nil {
-			choices.latencies, choices.err = v.service.MeasureRelayZones(ctx, choices.zones)
+			zones := slices.Concat(slices.Collect(maps.Values(choices.zones))...)
+			slices.Sort(zones)
+			choices.latencies, choices.err = v.service.MeasureRelayZones(ctx, slices.Compact(zones))
 		}
 		if choices.err != nil {
 			choices.retryAfter = time.Now().Add(30 * time.Second)

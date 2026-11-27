@@ -24,6 +24,9 @@ func (v *view) openSettings() {
 	project := entry(config.Project, "")
 	ports := newPortEditor(config.Ports)
 	hours := entry(strconv.Itoa(config.Hours), "4")
+	machine := &widget.Select{
+		Options: relay.MachineTypes(), Selected: config.RelayMachineType(), PlaceHolder: locale.T("Choose a machine type"),
+	}
 	picker := newZonePicker(v.window, config.Zone)
 	zone := picker.button
 
@@ -34,7 +37,7 @@ func (v *view) openSettings() {
 	googleID := entry(config.GoogleClientID, locale.T("Client ID"))
 	cfID := entry(config.CloudflareClientID, locale.T("Client ID"))
 
-	inputs := []fyne.Disableable{domain, project, hours, network, cfZone, googleID, cfID}
+	inputs := []fyne.Disableable{domain, project, machine, hours, network, cfZone, googleID, cfID}
 	readConfig := func() (relay.Config, error) {
 		duration, err := strconv.Atoi(strings.TrimSpace(hours.Text))
 		if err != nil {
@@ -45,7 +48,7 @@ func (v *view) openSettings() {
 			return relay.Config{}, err
 		}
 		return relay.Config{
-			Project: project.Text, Zone: picker.selected(), Network: strings.TrimSpace(network.Text),
+			Project: project.Text, MachineType: machine.Selected, Zone: picker.selected(), Network: strings.TrimSpace(network.Text),
 			Domain: domain.Text, CloudflareZone: cfZone.Text, Ports: mappings, Hours: duration,
 			GoogleClientID: googleID.Text, CloudflareClientID: cfID.Text,
 		}, nil
@@ -91,16 +94,18 @@ func (v *view) openSettings() {
 			if closed {
 				return
 			}
-			zones = choices.zones
-			if len(zones) > 0 {
-				latencies := choices.latencies
-				picker.setOptions(zones, latencies)
+			zones = choices.zones[machine.Selected]
+			v.problem = ""
+			if choices.zones != nil {
+				picker.setOptions(zones, choices.latencies)
 				if picker.selected() == "" {
-					picker.selectZone(fastestZone(zones, latencies))
+					picker.selectZone(fastestZone(zones, choices.latencies))
+				}
+				if len(zones) == 0 {
+					v.problem = locale.T("No zones offer this machine type.")
 				}
 			}
-			v.problem = ""
-			if choices.err != nil && (len(zones) == 0 || picker.selected() == "") {
+			if choices.err != nil && (choices.zones == nil || (len(zones) > 0 && picker.selected() == "")) {
 				v.problem = choices.err.Error()
 			}
 			v.render()
@@ -111,6 +116,15 @@ func (v *view) openSettings() {
 	}
 
 	project.OnSubmitted = func(string) { loadZones(nil) }
+	machine.OnChanged = func(string) {
+		if canLoad() {
+			loadZones(nil)
+		} else {
+			zones = nil
+			picker.setOptions(nil, nil)
+			v.settingsChanged()
+		}
+	}
 
 	google := widget.NewButtonWithIcon("", googleIcon, func() {
 		perform("google", func() {
@@ -126,6 +140,7 @@ func (v *view) openSettings() {
 		settingRow{label: "Relay"},
 		settingRow{"Hostname", domain},
 		settingRow{"Project ID", project},
+		settingRow{"Machine type", machine},
 		settingRow{"Relay location", picker.content},
 		settingRow{"Auto-delete after (h)", hours},
 		settingRow{label: "Network"},

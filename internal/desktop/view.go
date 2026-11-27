@@ -31,8 +31,9 @@ type backend interface {
 	DeleteProfile(string) error
 	SaveConfig(relay.Config) error
 	LogIn(context.Context, string) error
-	RelayZones(context.Context, string, string) ([]string, error)
+	RelayZones(context.Context, string, string) (map[string][]string, error)
 	MeasureRelayZones(context.Context, []string) (map[string]time.Duration, error)
+	RelayLoad(context.Context, string) (relay.Load, error)
 	Start(context.Context, bool) error
 	Extend(context.Context) error
 	Stop(context.Context) error
@@ -51,6 +52,7 @@ type view struct {
 	cancelAction context.CancelFunc
 	actionDone   chan struct{}
 	cleanupDone  chan struct{}
+	closeLoad    func()
 
 	profiles *widget.Select
 	add      *widget.Button
@@ -64,6 +66,7 @@ type view struct {
 	details  *fyne.Container
 	error    *widget.Label
 	start    *widget.Button
+	load     *widget.Button
 	extend   *widget.Button
 	stop     *widget.Button
 
@@ -150,9 +153,10 @@ func newView(window fyne.Window, service backend, icon fyne.Resource) *view {
 		v.startRelay(false)
 	})
 	v.start.Importance = widget.HighImportance
+	v.load = widget.NewButton(locale.T("Load"), v.showRelayLoad)
 	v.extend = widget.NewButtonWithIcon(locale.T("Extend 4 h"), theme.HistoryIcon(), func() { v.run(service.Extend, nil) })
 	v.stop = widget.NewButtonWithIcon(locale.T("Stop"), theme.MediaStopIcon(), func() { v.run(service.Stop, nil) })
-	actions := container.NewHBox(layout.NewSpacer(), v.start, v.extend, v.stop)
+	actions := container.NewHBox(layout.NewSpacer(), v.start, v.load, v.extend, v.stop)
 	cardContent := container.NewVBox(v.status, address, v.details,
 		widget.NewSeparator(), v.error, actions)
 	body := container.NewStack(card, container.New(layout.NewCustomPaddedLayout(16, 20, 20, 20), cardContent))
@@ -213,11 +217,16 @@ func (v *view) readyToStart() bool {
 func (v *view) render() {
 	v.renderProfiles()
 	phase := v.state.Phase
+	if phase != "running" && v.closeLoad != nil {
+		v.closeLoad()
+	}
 	locked := v.busy || v.closing || phase == "starting" || phase == "stopping"
 	ready := v.readyToStart()
 	setEnabled(v.profiles, !v.busy && !v.closing)
 	setEnabled(v.add, !v.busy && !v.closing)
 	setEnabled(v.settings, !locked)
+	setVisible(v.load, phase == "running")
+	setEnabled(v.load, !locked)
 
 	status := locale.T(phaseLabels[phase])
 	if v.closing {
@@ -405,6 +414,9 @@ func (v *view) close(app fyne.App) {
 		return
 	}
 	v.closing = true
+	if v.closeLoad != nil {
+		v.closeLoad()
+	}
 	v.render()
 	v.cleanupDone = make(chan struct{})
 	go func() {
