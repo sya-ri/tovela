@@ -26,6 +26,9 @@ func readVarInt(r io.ByteReader) (uint32, error) {
 		if err != nil {
 			return 0, err
 		}
+		if shift == 4 && b > 0x0f {
+			break
+		}
 		result |= uint32(b&127) << (7 * shift)
 		if b < 128 {
 			return result, nil
@@ -41,6 +44,8 @@ func pingMinecraft(ctx context.Context, address, host string, port int) error {
 		return err
 	}
 	defer conn.Close()
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
 	deadline := time.Now().Add(2 * time.Second)
 	if limit, ok := ctx.Deadline(); ok && limit.Before(deadline) {
 		deadline = limit

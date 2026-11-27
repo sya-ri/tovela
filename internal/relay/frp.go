@@ -24,10 +24,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sya-ri/tovela/internal/frprelease"
 	"github.com/sya-ri/tovela/internal/locale"
 )
-
-const frpVersion = "0.72.0"
 
 // ErrFrpcBlocked indicates that Windows denied access to the bundled client.
 var ErrFrpcBlocked = errors.New("Windows blocked frpc")
@@ -100,8 +99,8 @@ func (s identity) matchesPorts(ports []PortMapping) bool {
 }
 
 func serverStartup(session identity, mappings []PortMapping) string {
-	archive := "frp_" + frpVersion + "_linux_amd64.tar.gz"
-	const checksum = "daf719b32ca2778770bb92955e231a07414d754378b9af328aa2642862479804"
+	folder := "frp_" + frprelease.Version + "_linux_amd64"
+	download := "https://github.com/fatedier/frp/releases/download/v" + frprelease.Version + "/" + folder + ".tar.gz"
 	var allowed []string
 	seen := make(map[int]bool)
 	for _, port := range mappings {
@@ -111,25 +110,61 @@ func serverStartup(session identity, mappings []PortMapping) string {
 		}
 	}
 	ports := "[" + strings.Join(allowed, ", ") + "]"
-	return fmt.Sprintf("#!/bin/sh\nset -eu\numask 077\n"+
-		"install -d -m 700 /opt/tovela\ncd /opt/tovela\n"+
-		"if ! command -v curl >/dev/null; then apt-get update && apt-get install -y --no-install-recommends curl ca-certificates; fi\n"+
-		"curl --fail --silent --show-error --location --retry 2 --max-time 90 https://github.com/fatedier/frp/releases/download/v%s/%s -o frp.tar.gz\n"+
-		"printf '%%s  frp.tar.gz\\n' '%s' | sha256sum -c -\n"+
-		"tar -xzf frp.tar.gz --strip-components=1 frp_%s_linux_amd64/frps\n"+
-		"printf '%%s' '%s' | base64 -d > server.crt\n"+
-		"printf '%%s' '%s' | base64 -d > server.key\n"+
-		"cat > frps.toml <<'FRP_CONFIG'\n"+
-		"bindPort = 7000\nallowPorts = %s\nauth.token = %q\ntransport.tls.force = true\n"+
-		"transport.tls.certFile = \"/opt/tovela/server.crt\"\ntransport.tls.keyFile = \"/opt/tovela/server.key\"\n"+
-		"FRP_CONFIG\n"+
-		"cat > /etc/systemd/system/tovela.service <<'FRP_UNIT'\n"+
-		"[Unit]\nAfter=network-online.target\n[Service]\nWorkingDirectory=/opt/tovela\n"+
-		"ExecStart=/opt/tovela/frps -c /opt/tovela/frps.toml\n"+
-		"Restart=on-failure\nNoNewPrivileges=true\n[Install]\nWantedBy=multi-user.target\nFRP_UNIT\n"+
-		"systemctl daemon-reload\nsystemctl enable --now tovela.service\n",
-		frpVersion, archive, checksum, frpVersion, base64.StdEncoding.EncodeToString(session.Certificate),
-		base64.StdEncoding.EncodeToString(session.PrivateKey), ports, session.Token)
+	capabilities := "CapabilityBoundingSet=\n"
+	if slices.ContainsFunc(mappings, func(port PortMapping) bool { return port.PublicPort < 1024 }) {
+		capabilities = "CapabilityBoundingSet=CAP_NET_BIND_SERVICE\nAmbientCapabilities=CAP_NET_BIND_SERVICE\n"
+	}
+	return fmt.Sprintf(`#!/bin/sh
+set -eu
+umask 077
+
+id -u tovela >/dev/null 2>&1 || useradd --system --user-group --no-create-home --shell /usr/sbin/nologin tovela
+install -d -m 0750 -o root -g tovela /opt/tovela
+cd /opt/tovela
+
+if ! command -v curl >/dev/null; then
+  apt-get update && apt-get install -y --no-install-recommends curl ca-certificates
+fi
+curl --fail --silent --show-error --location --retry 2 --max-time 90 '%s' -o frp.tar.gz
+printf '%%s  frp.tar.gz\n' '%s' | sha256sum -c -
+tar -xzf frp.tar.gz --strip-components=1 '%s/frps'
+rm -f frp.tar.gz
+
+printf '%%s' '%s' | base64 -d > server.crt
+printf '%%s' '%s' | base64 -d > server.key
+cat > frps.toml <<'FRP_CONFIG'
+bindPort = 7000
+allowPorts = %s
+auth.token = %q
+transport.tls.force = true
+transport.tls.certFile = "/opt/tovela/server.crt"
+transport.tls.keyFile = "/opt/tovela/server.key"
+FRP_CONFIG
+chown root:tovela frps frps.toml server.crt server.key
+chmod 0750 frps
+chmod 0640 frps.toml server.crt server.key
+
+cat > /etc/systemd/system/tovela.service <<'FRP_UNIT'
+[Unit]
+After=network-online.target
+
+[Service]
+WorkingDirectory=/opt/tovela
+ExecStart=/opt/tovela/frps -c /opt/tovela/frps.toml
+User=tovela
+Group=tovela
+%sRestart=on-failure
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
+FRP_UNIT
+systemctl daemon-reload
+systemctl enable --now tovela.service
+`, download, frprelease.LinuxAMD64SHA256, folder, base64.StdEncoding.EncodeToString(session.Certificate),
+		base64.StdEncoding.EncodeToString(session.PrivateKey), ports, session.Token, capabilities)
 }
 
 func frpcConfig(config Config, session identity, ip, certPath string) string {

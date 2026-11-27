@@ -38,7 +38,7 @@ func TestStartChecksDNSBeforePreparingClient(t *testing.T) {
 		case "api.cloudflare.com/client/v4/zones":
 			return reply(http.StatusOK, `{"result":[{"id":"test-zone"}]}`)
 		case "api.cloudflare.com/client/v4/zones/test-zone/dns_records":
-			return reply(http.StatusOK, `{"result":[{"id":"existing","type":"A"}]}`)
+			return reply(http.StatusOK, `{"result":[{"id":"existing","type":"A","name":"play.example.com"}]}`)
 		default:
 			t.Fatalf("unexpected preflight request: %s", req.URL)
 			return nil, nil

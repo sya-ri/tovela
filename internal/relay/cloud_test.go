@@ -155,7 +155,7 @@ func TestExistingDNSRequiresReplacementConsent(t *testing.T) {
 	config.Domain = "mc.example.com"
 	dns := cloudflare{config: config, client: &http.Client{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
 		if r.URL.Query().Get("name") == config.Domain {
-			return reply(200, `{"result":[{"id":"other","type":"CNAME","name":"mc.example.com"}]}`)
+			return reply(200, `{"result":[{"id":"other","type":"CNAME","name":"mc.example.com"},{"id":"unrelated","type":"A","name":"other.example.com"}]}`)
 		}
 		return reply(200, `{"result":[{"id":"srv","type":"SRV","name":"_minecraft._tcp.mc.example.com"}]}`)
 	})}}

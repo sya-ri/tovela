@@ -83,10 +83,14 @@ func (d *Desktop) path(id string) string {
 func (d *Desktop) GetState() DesktopState {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	var active State
 	profiles := make([]Profile, 0, len(d.profiles))
 	for id, service := range d.profiles {
 		state := service.GetState()
 		profiles = append(profiles, Profile{ID: id, Domain: state.Config.Domain, Phase: state.Phase})
+		if id == d.active {
+			active = state
+		}
 	}
 	sort.Slice(profiles, func(i, j int) bool {
 		if profiles[i].Domain != profiles[j].Domain {
@@ -94,7 +98,7 @@ func (d *Desktop) GetState() DesktopState {
 		}
 		return profiles[i].ID < profiles[j].ID
 	})
-	return DesktopState{State: d.profiles[d.active].GetState(), ActiveProfile: d.active, Profiles: profiles}
+	return DesktopState{State: active, ActiveProfile: d.active, Profiles: profiles}
 }
 
 func (d *Desktop) SelectProfile(id string) error {

@@ -21,6 +21,14 @@ import (
 
 const oauthCallback = "127.0.0.1:42813"
 
+// Provider APIs and token endpoints are fixed. Never forward credentials through a redirect.
+var providerHTTPClient = &http.Client{
+	Timeout: 15 * time.Second,
+	CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	},
+}
+
 func readCredential(key string, out any) error {
 	value, err := keyring.Get(credentialService, key)
 	if err != nil {
@@ -108,7 +116,8 @@ func authorize(ctx context.Context, cfg *oauth2.Config, provider, key string) er
 		if result == "" {
 			return errors.New(locale.T("authorization was not completed"))
 		}
-		token, err := cfg.Exchange(ctx, result, oauth2.VerifierOption(verifier))
+		exchangeCtx := context.WithValue(ctx, oauth2.HTTPClient, providerHTTPClient)
+		token, err := cfg.Exchange(exchangeCtx, result, oauth2.VerifierOption(verifier))
 		if err != nil {
 			return errors.New(locale.T("Could not exchange the code. Check the OAuth client settings."))
 		}
@@ -160,10 +169,8 @@ func authenticatedClient(ctx context.Context, config Config, provider string) (*
 	if err := readCredential(key, &token); err != nil {
 		return nil, fmt.Errorf(locale.T("Sign in to %s in Settings."), provider)
 	}
-	ctx = context.WithValue(ctx, oauth2.HTTPClient, &http.Client{Timeout: 15 * time.Second})
+	ctx = context.WithValue(ctx, oauth2.HTTPClient, providerHTTPClient)
 	// Reuse valid tokens within one cloud operation. The source reloads rotated tokens when refreshing.
 	source := oauth2.ReuseTokenSource(&token, &savedTokens{ctx: ctx, cfg: cfg, key: key})
-	client := oauth2.NewClient(ctx, source)
-	client.Timeout = 15 * time.Second
-	return client, nil
+	return oauth2.NewClient(ctx, source), nil
 }
