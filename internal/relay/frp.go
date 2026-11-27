@@ -123,28 +123,44 @@ type tunnel struct {
 	err      error
 }
 
-func launchFrpc(config Config, session identity, ip string) (*tunnel, error) {
+func prepareFrpc(ctx context.Context) (path string, err error) {
 	name := "frpc"
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}
 	binary, err := frpFiles.ReadFile("bin/" + name)
 	if err != nil {
-		return nil, errors.New("This build does not contain frpc for your OS.")
+		return "", errors.New("This build does not contain frpc for your OS.")
 	}
 	dir, err := os.MkdirTemp("", "tovela-frpc-")
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	started := false
 	defer func() {
-		if !started {
+		if err != nil {
 			_ = os.RemoveAll(dir)
 		}
 	}()
+
+	executable := filepath.Join(dir, name)
+	if err := os.WriteFile(executable, binary, 0700); err != nil {
+		return "", err
+	}
+	// Detect local execution restrictions before provisioning a billable VM.
+	checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	probe := exec.CommandContext(checkCtx, executable, "--version")
+	hideConsole(probe)
+	if err := probe.Run(); err != nil {
+		return "", fmt.Errorf("could not run bundled frpc: %w", err)
+	}
+	return executable, nil
+}
+
+func launchFrpc(executable string, config Config, session identity, ip string) (*tunnel, error) {
+	dir := filepath.Dir(executable)
 	certPath := filepath.Join(dir, "server.crt")
 	configPath := filepath.Join(dir, "frpc.toml")
-	executable := filepath.Join(dir, name)
 	for _, file := range []struct {
 		path string
 		data []byte
@@ -152,7 +168,6 @@ func launchFrpc(config Config, session identity, ip string) (*tunnel, error) {
 	}{
 		{certPath, session.Certificate, 0600},
 		{configPath, []byte(frpcConfig(config, session, ip, certPath)), 0600},
-		{executable, binary, 0700},
 	} {
 		if err := os.WriteFile(file.path, file.data, file.mode); err != nil {
 			return nil, err
@@ -169,7 +184,6 @@ func launchFrpc(config Config, session identity, ip string) (*tunnel, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	started = true
 	go func() {
 		lines := bufio.NewScanner(logs)
 		for lines.Scan() {

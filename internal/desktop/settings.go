@@ -16,6 +16,7 @@ import (
 )
 
 func (v *view) openSettings() {
+	v.replace.SetChecked(false)
 	v.problem = ""
 	config := v.state.Config
 	domain := entry(config.Domain, "mc.example.com")

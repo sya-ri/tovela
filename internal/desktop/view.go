@@ -132,9 +132,8 @@ func newView(window fyne.Window, service backend, icon fyne.Resource) *view {
 	v.replace = widget.NewCheck("Replace existing DNS records", nil)
 	v.start = widget.NewButtonWithIcon("Start", theme.MediaPlayIcon(), func() {
 		replace := v.replace.Checked
-		v.run(func(ctx context.Context) error { return service.Start(ctx, replace) }, func() {
-			v.replace.SetChecked(false)
-		})
+		v.replace.SetChecked(false)
+		v.run(func(ctx context.Context) error { return service.Start(ctx, replace) }, nil)
 	})
 	v.start.Importance = widget.HighImportance
 	v.extend = widget.NewButtonWithIcon("Extend 4 h", theme.HistoryIcon(), func() { v.run(service.Extend, nil) })

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
@@ -140,6 +142,7 @@ func (s *Service) Start(ctx context.Context, replaceDNS bool) (err error) {
 
 	var session identity
 	var started *tunnel
+	var frpcPath string
 	pending := false
 	created := false
 	var gce compute
@@ -147,6 +150,9 @@ func (s *Service) Start(ctx context.Context, replaceDNS bool) (err error) {
 	var zoneID string
 	s.setPhase("starting", state.Deadline, nil)
 	defer func() {
+		if started == nil && frpcPath != "" {
+			_ = os.RemoveAll(filepath.Dir(frpcPath))
+		}
 		if err == nil {
 			return
 		}
@@ -176,6 +182,10 @@ func (s *Service) Start(ctx context.Context, replaceDNS bool) (err error) {
 	}
 	if err := pingMinecraft(ctx, net.JoinHostPort("127.0.0.1", strconv.Itoa(config.TCPPort)), "localhost", config.TCPPort); err != nil {
 		return fmt.Errorf("Check your local Minecraft Java server on port %d: %w", config.TCPPort, err)
+	}
+	frpcPath, err = prepareFrpc(ctx)
+	if err != nil {
+		return err
 	}
 	google, err := authenticatedClient(context.Background(), config, "google")
 	if err != nil {
@@ -252,7 +262,7 @@ func (s *Service) Start(ctx context.Context, replaceDNS bool) (err error) {
 	if err := writeCredential(key, session); err != nil {
 		return err
 	}
-	started, err = launchFrpc(config, session, session.PublicIP)
+	started, err = launchFrpc(frpcPath, config, session, session.PublicIP)
 	if err != nil {
 		return err
 	}
