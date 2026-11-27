@@ -19,12 +19,12 @@ import (
 const maxArchiveSize = 64 << 20
 
 var checksums = map[string]string{
-	"darwin_amd64.tar.gz": "60439dc6bf794c4182a1a4cac147d642f839d55201607208979eb23aecd09be9",
-	"darwin_arm64.tar.gz": "6e8576c5b6b9914a86850f6ff4fb81c5a09e706f91f70f64d5f398558bdc9db8",
+	"darwin_amd64.tar.gz": frprelease.DarwinAMD64SHA256,
+	"darwin_arm64.tar.gz": frprelease.DarwinARM64SHA256,
 	"linux_amd64.tar.gz":  frprelease.LinuxAMD64SHA256,
-	"linux_arm64.tar.gz":  "02180b857480302fd934e9ddbd50fe2f73229f99062f88756abc6de9df5e95cf",
-	"windows_amd64.zip":   "5197c1b69564089cdc229fc1260a0e25db1e722b1b7db45fe1542c3c43edf9ae",
-	"windows_arm64.zip":   "e4b83b66c4045971dd9a47cdef16dd02af471aaa6667dd303e63b1a669162927",
+	"linux_arm64.tar.gz":  frprelease.LinuxARM64SHA256,
+	"windows_amd64.zip":   frprelease.WindowsAMD64SHA256,
+	"windows_arm64.zip":   frprelease.WindowsARM64SHA256,
 }
 
 func main() {
