@@ -37,12 +37,7 @@ Anycast can route players through nearby edges automatically. Choosing a region 
 
 The chart uses one Localtonet tunnel (one public port) and the default e2-micro. Tovela estimates use Iowa rates with a 10 GiB standard disk and public IPv4. Estimates exclude transfer, taxes, and credits. [Compute](https://cloud.google.com/products/compute/pricing/general-purpose), [disk](https://cloud.google.com/compute/disks-image-pricing), [IPv4](https://cloud.google.com/vpc/network-pricing#ipaddress), [Free Tier](https://docs.cloud.google.com/free/docs/free-cloud-features#compute)
 
-| Machine type | Sustained vCPU | RAM | Max VM egress | Cost at 100 h | Hours to $3 |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| e2-micro (default) | 0.25 | 1 GiB | 1 Gbps | $1.39 | 215 h |
-| e2-small | 0.5 | 2 GiB | 1 Gbps | $2.23 | 135 h |
-| e2-medium | 1 | 4 GiB | 2 Gbps | $3.91 | 77 h |
-| e2-standard-2 | 2 | 8 GiB | 4 Gbps | $7.26 | 41 h |
+![Iowa relay cost at 100 hours per month for each Tovela machine type. e2-micro $1.39, e2-small $2.23, e2-medium $3.91, e2-standard-2 $7.26.](docs/relay-machine-cost.svg)
 
 The three shared-core types can briefly burst to two vCPUs. [E2 machine types](https://docs.cloud.google.com/compute/docs/general-purpose-machines#sharedcore)
 
