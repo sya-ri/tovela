@@ -8,7 +8,7 @@ go test -tags ci ./...
 go build -o build/tovela .
 ```
 
-The tests use Fyne's software renderer to compare snapshots and exercise controls without opening a window. See the [desktop UI guidelines](../.agents/skills/tovela-desktop-ui/SKILL.md) for layout and review checks.
+The tests use Fyne's software renderer to compare snapshots and exercise controls without opening a window. See the [desktop guidelines](../AGENTS.md#desktop) for layout and review checks.
 
 ## Cloud requirements
 
