@@ -155,10 +155,11 @@ func prepareFrpc(ctx context.Context) (path string, err error) {
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}
-	binary, err := frpFiles.ReadFile("bin/" + name)
+	binary, err := frpFiles.Open("bin/" + name)
 	if err != nil {
 		return "", errors.New(locale.T("This build does not contain frpc for your OS."))
 	}
+	defer binary.Close()
 	dir, err := os.MkdirTemp("", "tovela-frpc-")
 	if err != nil {
 		return "", err
@@ -170,7 +171,12 @@ func prepareFrpc(ctx context.Context) (path string, err error) {
 	}()
 
 	executable := filepath.Join(dir, name)
-	if err := os.WriteFile(executable, binary, 0700); err != nil {
+	file, err := os.OpenFile(executable, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0700)
+	if err != nil {
+		return "", frpcExecutionError(err)
+	}
+	_, copyErr := io.Copy(file, binary)
+	if err := errors.Join(copyErr, file.Close()); err != nil {
 		return "", frpcExecutionError(err)
 	}
 	// Detect local execution restrictions before provisioning a billable VM.
