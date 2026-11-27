@@ -292,15 +292,12 @@ func (v *view) run(action func(context.Context) error, success func()) {
 			if v.closing {
 				return
 			}
-			blocked := errors.Is(err, relay.ErrFrpcBlocked)
-			if blocked {
-				v.problem = locale.T("Windows blocked frpc")
-			} else if err != nil {
+			if err != nil {
 				v.problem = err.Error()
 			}
 			v.state = v.service.GetState()
 			v.render()
-			if blocked {
+			if errors.Is(err, relay.ErrFrpcBlocked) {
 				v.showProtectionHistory()
 			}
 			if err == nil && success != nil {

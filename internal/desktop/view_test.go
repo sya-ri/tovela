@@ -1,6 +1,8 @@
 package desktop
 
 import (
+	"context"
+	"errors"
 	"image/color"
 	"os"
 	"testing"
@@ -84,5 +86,27 @@ func TestRelayScreens(t *testing.T) {
 			}
 			test.AssertRendersToImage(t, screen.name+".png", window.Canvas())
 		})
+	}
+}
+
+func TestBlockedClientKeepsCleanupError(t *testing.T) {
+	a := test.NewTempApp(t)
+	window := a.NewWindow("Tovela")
+	defer window.Close()
+
+	v := newView(window, snapshotBackend{}, theme.SettingsIcon())
+	failure := errors.Join(relay.ErrFrpcBlocked, errors.New("The VM could not be deleted."))
+	v.run(func(context.Context) error { return failure }, nil)
+
+	select {
+	case <-v.actionDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("The relay action did not finish.")
+	}
+	if v.problem != failure.Error() {
+		t.Errorf("relay failure = %q, want %q", v.problem, failure.Error())
+	}
+	if window.Canvas().Overlays().Top() == nil {
+		t.Error("Protection History guidance was not shown.")
 	}
 }

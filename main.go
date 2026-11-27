@@ -27,6 +27,7 @@ func main() {
 	if err := locale.Use(lang.SystemLocale().LanguageString()); err != nil {
 		log.Print(err)
 	}
+	a.Settings().SetTheme(desktop.Theme())
 	a.SetIcon(fyne.NewStaticResource("icon.svg", icon))
 	window := a.NewWindow("Tovela")
 	window.Resize(fyne.NewSize(610, 500))
@@ -53,7 +54,6 @@ func main() {
 		window.ShowAndRun()
 		return
 	}
-	a.Settings().SetTheme(desktop.Theme())
 	desktop.Run(a, window, service)
 }
 
