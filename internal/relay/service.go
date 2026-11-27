@@ -440,11 +440,13 @@ func (s *Service) removeRelay(ctx context.Context, config Config, session identi
 }
 
 func (s *Service) closeApp() error {
+	// Let an in-progress expiry cleanup finish before retrying or closing.
+	s.operation.Lock()
+	defer s.operation.Unlock()
+	if s.GetState().Phase == "idle" {
+		return nil
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	state := s.GetState()
-	if state.Phase != "idle" {
-		return s.Stop(ctx)
-	}
-	return nil
+	return s.stop(ctx)
 }

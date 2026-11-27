@@ -52,7 +52,7 @@ func request(ctx context.Context, client *http.Client, method, address string, p
 		return err
 	}
 	defer res.Body.Close()
-	if res.StatusCode >= 400 {
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		var fields struct {
 			Error  struct{ Message string }
 			Errors []struct{ Message string }
@@ -326,7 +326,7 @@ func (c cloudflare) zone(ctx context.Context) (string, error) {
 func (c cloudflare) records(ctx context.Context, root, name string) ([]dnsRecord, error) {
 	var response struct{ Result []dnsRecord }
 	err := request(ctx, c.client, http.MethodGet, root+"?name="+url.QueryEscape(name), nil, &response)
-	return response.Result, err
+	return slices.DeleteFunc(response.Result, func(record dnsRecord) bool { return !strings.EqualFold(record.Name, name) }), err
 }
 
 func (c cloudflare) recordOwner(session identity) string {

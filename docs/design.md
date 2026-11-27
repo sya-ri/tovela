@@ -29,7 +29,7 @@ The app finds the Cloudflare zone matching the hostname unless the operator sele
 
 Google and Cloudflare sign-in uses the system browser, Authorization Code with PKCE, and the OS credential store. Google access uses the Compute Engine and read-only Monitoring scopes. Cloudflare access uses zone lookup and DNS write. Operators manage IAM, billing, and API access in their own cloud accounts. Apply each provider's OAuth publication requirements before distributing the app.
 
-The build bundles a pinned `frpc` for the target OS and CPU. The VM downloads and verifies `frps` at the same version. Each session authenticates with its own token, and the client verifies the server certificate over TLS. Distributions include the frp license.
+The build bundles a pinned `frpc` for the target OS and CPU. The VM downloads and verifies `frps` at the same version. The relay service runs as an unprivileged user and receives permission to bind low ports only when configured. Each session authenticates with its own token, and the client verifies the server certificate over TLS. Distributions include the frp license.
 
 ## Verification
 

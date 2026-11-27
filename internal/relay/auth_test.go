@@ -2,6 +2,7 @@ package relay
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"testing"
 	"time"
@@ -25,6 +26,9 @@ func TestAuthenticatedClientReusesValidToken(t *testing.T) {
 	client, err := authenticatedClient(t.Context(), config, "google")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if client.CheckRedirect == nil || !errors.Is(client.CheckRedirect(nil, nil), http.ErrUseLastResponse) {
+		t.Fatal("authenticated requests must not follow redirects")
 	}
 	transport := client.Transport.(*oauth2.Transport)
 	transport.Base = transportFunc(func(req *http.Request) (*http.Response, error) {

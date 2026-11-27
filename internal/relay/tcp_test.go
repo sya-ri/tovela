@@ -42,11 +42,28 @@ func TestRawTCPUsesPublicPortAndAcceptsAnHTTPService(t *testing.T) {
 		t.Fatalf("could not probe the local HTTP service over TCP: %v", err)
 	}
 	session := identity{}
+	script := serverStartup(session, config.Ports)
 	client := frpcConfig(config, session, "192.0.2.1", "server.crt")
 	if !strings.Contains(client, "localPort = "+portText+"\nremotePort = 80") ||
 		strings.Count(client, "[[proxies]]") != 4 ||
-		!strings.Contains(serverStartup(session, config.Ports), "allowPorts = [{single = 25565}, {single = 80}, {single = 19132}]") {
+		!strings.Contains(script, "allowPorts = [{single = 25565}, {single = 80}, {single = 19132}]") {
 		t.Fatal("the relay configuration did not use all public TCP and UDP ports")
+	}
+	for _, setting := range []string{
+		"User=tovela",
+		"Group=tovela",
+		"CapabilityBoundingSet=CAP_NET_BIND_SERVICE",
+		"AmbientCapabilities=CAP_NET_BIND_SERVICE",
+		"NoNewPrivileges=true",
+		"ProtectSystem=strict",
+	} {
+		if !strings.Contains(script, "\n"+setting+"\n") {
+			t.Errorf("relay service is missing %s", setting)
+		}
+	}
+	if restricted := serverStartup(session, config.Ports[:1]); !strings.Contains(restricted, "\nCapabilityBoundingSet=\n") ||
+		strings.Contains(restricted, "AmbientCapabilities=") {
+		t.Error("the default Minecraft mapping does not need extra privileges")
 	}
 	config.Ports = append(config.Ports, PortMapping{MinecraftJava, 25566, 80})
 	if err := config.validate(); err == nil {
